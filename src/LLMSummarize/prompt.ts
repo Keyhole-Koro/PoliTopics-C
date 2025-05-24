@@ -42,7 +42,7 @@ export const output_format = `### 出力フォーマット
 以下の形式に従ってJSONデータを作成してください：
 
 {
-  "issueID": "文字列（議事録ID）",
+  "id": "文字列（議事録ID）",
   "title": "会議のタイトル",
   "date": "開催日 (YYYY-MM-DD)",
   "imageKind": "画像分類（例: graph, diagram, etc.）",

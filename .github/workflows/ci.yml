@@ -11,25 +11,36 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
+    services:
+      dynamodb-local:
+        image: amazon/dynamodb-local
+        ports:
+          - 8000:8000
+        options: >-
+          --health-cmd "curl -f http://localhost:8000 || exit 1"
+          --health-interval 5s
+          --health-timeout 2s
+          --health-retries 20
+
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      AWS_REGION: us-west-2
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+      DYNAMODB_ENDPOINT: http://localhost:8000
 
     steps:
-      # Checkout the repository
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # Set up Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18' # Use the Node.js version your project requires
+          node-version: '18'
 
-      # Install dependencies
       - name: Install dependencies
         run: npm install
 
-      # Run Jest tests
       - name: Run tests
         run: npm test
