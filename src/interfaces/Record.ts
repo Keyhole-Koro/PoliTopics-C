@@ -17,17 +17,6 @@ export interface MapIssue {
     speeches: Speech[];
 }
 
-
-
-export const createProcessedIssue = (raw: RawSpeech, speeches: Speech[]): ProcessedIssue => ({
-    imageKind: raw.imageKind,
-    session: raw.session,
-    nameOfHouse: raw.nameOfHouse,
-    nameOfMeeting: raw.nameOfMeeting,
-    date: raw.date,
-    speeches: speeches
-});
-
 // Type guards for runtime type checking
 export const isSpeech = (obj: any): obj is Speech => {
     return obj &&

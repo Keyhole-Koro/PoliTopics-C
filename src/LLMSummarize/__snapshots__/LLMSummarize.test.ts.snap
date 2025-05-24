@@ -1,0 +1,271 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Gemini API Handler should generate summaries for formatted records: Gemini response for issue 121714024X01820250509 1`] = `
+{
+  "category": "政治",
+  "date": "2025-05-09",
+  "description": "参議院議院運営委員会における会議録。重要経済安保情報に関する法律案の採決、規則案・規程案の委員会審査省略要求の取扱い、国会職員の適性評価に関する件などが議題となった。",
+  "dialogs": [
+    {
+      "order": 1,
+      "response_to": [],
+      "soft_summary": "会議の日時や出席者、そして会議で話し合われたことの一覧です。",
+      "speaker": "会議録情報",
+      "speaker_group": null,
+      "speaker_position": null,
+      "speaker_role": null,
+      "summary": "会議の開催日時、出席者リスト、議題のリスト。",
+    },
+    {
+      "order": 2,
+      "response_to": [],
+      "soft_summary": "会議が始まり、最初に話し合うこととして、国の重要な経済や安全保障に関する秘密を守るための法律案が決められました。その法律案について、詳しい説明を聞くことになりました。",
+      "speaker": "牧野たかお",
+      "speaker_group": "自由民主党",
+      "speaker_position": "委員長",
+      "speaker_role": "議長",
+      "summary": "会議の開会宣言と、重要経済安保情報に関する法律案の議題決定、趣旨説明の依頼。",
+    },
+    {
+      "order": 3,
+      "response_to": [
+        {
+          "id": 2,
+          "reaction": "answer",
+        },
+      ],
+      "soft_summary": "国の重要な経済や安全保障に関する秘密を守るための法律案について、詳しい説明がありました。この法律は、5月16日から施行されます。",
+      "speaker": "浜田靖一",
+      "speaker_group": "自由民主党・無所属の会",
+      "speaker_position": null,
+      "speaker_role": "衆議院議員",
+      "summary": "重要経済安保情報に関する法律案の趣旨説明。施行日は令和7年5月16日。",
+    },
+    {
+      "order": 4,
+      "response_to": [
+        {
+          "id": 3,
+          "reaction": "neutral",
+        },
+      ],
+      "soft_summary": "法律案について、何か意見のある人は発言するように促しました。",
+      "speaker": "牧野たかお",
+      "speaker_group": "自由民主党",
+      "speaker_position": "委員長",
+      "speaker_role": "議長",
+      "summary": "法律案に関する意見聴取の呼びかけ。",
+    },
+    {
+      "order": 5,
+      "response_to": [
+        {
+          "id": 4,
+          "reaction": "disagree",
+        },
+      ],
+      "soft_summary": "国の重要な秘密を守るための法律案に反対する意見が述べられました。この法律案によって、国民の権利が制限されたり、政治家たちが自由に発言できなくなったりするのではないかと懸念されています。",
+      "speaker": "岩渕友",
+      "speaker_group": "日本共産党",
+      "speaker_position": null,
+      "speaker_role": "委員",
+      "summary": "重要経済安保情報に関する法律案への反対意見表明。国民主権と基本的人権を侵害する、国会の情報監視機能を弱体化させるものと批判。",
+    },
+    {
+      "order": 6,
+      "response_to": [
+        {
+          "id": 5,
+          "reaction": "neutral",
+        },
+      ],
+      "soft_summary": "法律案について投票が行われ、賛成多数で可決されました。",
+      "speaker": "牧野たかお",
+      "speaker_group": "自由民主党",
+      "speaker_position": "委員長",
+      "speaker_role": "議長",
+      "summary": "法律案の採決。賛成多数で可決。",
+    },
+    {
+      "order": 7,
+      "response_to": [
+        {
+          "id": 6,
+          "reaction": "neutral",
+        },
+      ],
+      "soft_summary": "法律案の詳しい内容をまとめた報告書の作成は、委員長にお任せすることに決まりました。",
+      "speaker": "牧野たかお",
+      "speaker_group": "自由民主党",
+      "speaker_position": "委員長",
+      "speaker_role": "議長",
+      "summary": "審査報告書作成の委員長への一任決定。",
+    },
+    {
+      "order": 8,
+      "response_to": [
+        {
+          "id": 7,
+          "reaction": "neutral",
+        },
+      ],
+      "soft_summary": "会議のやり方に関するルール改正案と、会議の運営に関するルール改正案をまとめて話し合うことになり、事務局から説明を聞きました。",
+      "speaker": "牧野たかお",
+      "speaker_group": "自由民主党",
+      "speaker_position": "委員長",
+      "speaker_role": "議長",
+      "summary": "規則案と規程案の議題決定、事務総長への報告依頼。",
+    },
+    {
+      "order": 9,
+      "response_to": [
+        {
+          "id": 8,
+          "reaction": "answer",
+        },
+      ],
+      "soft_summary": "会議のやり方に関するルール改正案と、会議の運営に関するルール改正案について、これらを簡単に決めてしまいたいという要望がありました。",
+      "speaker": "小林史武",
+      "speaker_group": null,
+      "speaker_position": "参議院事務総長",
+      "speaker_role": "事務局",
+      "summary": "規則案と規程案に関する報告。委員会審査省略要求あり。",
+    },
+    {
+      "order": 10,
+      "response_to": [
+        {
+          "id": 9,
+          "reaction": "neutral",
+        },
+      ],
+      "soft_summary": "ルール改正案について投票が行われ、賛成多数で簡単に決めることになりました。",
+      "speaker": "牧野たかお",
+      "speaker_group": "自由民主党",
+      "speaker_position": "委員長",
+      "speaker_role": "議長",
+      "summary": "規則案と規程案の委員会審査省略に関する採決。賛成多数で決定。",
+    },
+    {
+      "order": 11,
+      "response_to": [
+        {
+          "id": 10,
+          "reaction": "neutral",
+        },
+      ],
+      "soft_summary": "国会議員を助ける職員の評価方法について話し合うことになり、事務局から説明を聞きました。",
+      "speaker": "牧野たかお",
+      "speaker_group": "自由民主党",
+      "speaker_position": "委員長",
+      "speaker_role": "議長",
+      "summary": "国会職員の適性評価に関する件の議題決定、事務総長への説明依頼。",
+    },
+    {
+      "order": 12,
+      "response_to": [
+        {
+          "id": 11,
+          "reaction": "answer",
+        },
+      ],
+      "soft_summary": "国会議員を助ける職員の評価方法について、国の重要な経済や安全保障に関する秘密を守るための規定を追加することになりました。",
+      "speaker": "小林史武",
+      "speaker_group": null,
+      "speaker_position": "参議院事務総長",
+      "speaker_role": "事務局",
+      "summary": "国会職員の適性評価に関する説明。重要経済安保情報に関する規定を追加。",
+    },
+  ],
+  "imageKind": "会議録",
+  "issueID": "217-20250509",
+  "keywords": [
+    {
+      "keyword": "重要経済安保情報",
+      "priority": "high",
+    },
+    {
+      "keyword": "国会法改正",
+      "priority": "high",
+    },
+    {
+      "keyword": "秘密保護",
+      "priority": "high",
+    },
+    {
+      "keyword": "適性評価",
+      "priority": "medium",
+    },
+    {
+      "keyword": "委員会審査省略",
+      "priority": "medium",
+    },
+    {
+      "keyword": "日本共産党",
+      "priority": "medium",
+    },
+  ],
+  "middle_summary": [
+    {
+      "figure": null,
+      "order": 1,
+      "summary": "重要経済安保情報に関する法律案の趣旨説明と採決。日本共産党から反対意見が出された。",
+    },
+    {
+      "figure": null,
+      "order": 2,
+      "summary": "規則案と規程案の委員会審査省略に関する件。委員長提案で可決。",
+    },
+    {
+      "figure": null,
+      "order": 3,
+      "summary": "国会職員の適性評価に関する件の一部改正。事務総長による説明の後、決定。",
+    },
+  ],
+  "nameOfHouse": "参議院",
+  "nameOfMeeting": "議院運営委員会",
+  "participants": [
+    {
+      "name": "牧野たかお",
+      "summary": "委員長として会議を進行し、議題決定、意見聴取、採決などを担当。",
+    },
+    {
+      "name": "浜田靖一",
+      "summary": "重要経済安保情報に関する法律案の趣旨説明を行った。",
+    },
+    {
+      "name": "岩渕友",
+      "summary": "重要経済安保情報に関する法律案に反対し、その理由を詳細に説明した。",
+    },
+    {
+      "name": "小林史武",
+      "summary": "事務総長として、規則案・規程案、国会職員の適性評価に関する説明を行った。",
+    },
+  ],
+  "session": 217,
+  "soft_summary": {
+    "id": 1,
+    "summary": "国の重要な秘密を守るための法律案が参議院で承認されました。この法律案は、経済に関する重要な秘密をしっかり守るためのものですが、反対する意見もありました。反対する人は、この法律によって、政治家たちが自由に発言できなくなったり、重要な情報が国民に届かなくなったりするのではないかと心配しています。他にも、会議のやり方に関するルール改正や、国会議員を助ける職員の評価方法に関する話もされました。",
+  },
+  "summary": {
+    "figure": null,
+    "id": 1,
+    "summary": "参議院議院運営委員会において、重要経済安保情報の保護に関する法律案が可決された。また、規則案・規程案の委員会審査省略、国会職員の適性評価に関する事項も審議され、決定された。日本共産党の岩渕友委員は、これらの改正案が国会の情報監視機能を弱体化させ、議員の発言・質問の自由を制限すると強く批判した。",
+  },
+  "terms": [
+    {
+      "definition": "経済安全保障上重要な情報。国家機密に準ずる扱いとなる。",
+      "term": "重要経済安保情報",
+    },
+    {
+      "definition": "個人情報の把握による、特定の職務への適任性の評価。",
+      "term": "適性評価",
+    },
+    {
+      "definition": "委員会での審議を省略し、迅速に決定を行うこと。",
+      "term": "委員会審査省略",
+    },
+  ],
+  "title": "参議院議院運営委員会",
+}
+`;

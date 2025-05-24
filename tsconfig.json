@@ -15,8 +15,8 @@
       "paths": {         // Optional: For aliasing paths (e.g., "@/components")
         "@interfaces/*": ["interfaces/*"],
         "@DynamoDBHandler/*": ["DynamoDBHandler/*"],
-        "@GeminiHandler/*": ["GeminiHandler/*"],
-        "@NationalDietAPIHandler/*": ["NationalDietAPIHandler/*"],
+        "@LLMSummarize/*": ["LLMSummarize/*"],
+        "@NationalDietRecord/*": ["NationalDietRecord/*"],
         "@services/*": ["services/*"],
         "@utils/*": ["utils/*"]
       },

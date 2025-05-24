@@ -1,4 +1,4 @@
-import { MapIssue } from '@interfaces/Speech';
+import { MapIssue } from '@interfaces/Record';
 import { RawData, RawSpeech } from './RawRecord';
 
 export default class SpeechFormatter {

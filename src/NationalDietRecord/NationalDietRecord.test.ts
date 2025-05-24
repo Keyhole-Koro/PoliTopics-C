@@ -2,9 +2,10 @@ import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import SpeechFormatter from './recordFormat';
-import { MapIssue } from '@interfaces/Speech'; // Assuming these types exist in your project
+import { MapIssue } from '@interfaces/Record'; // Assuming these types exist in your project
 import { RawData, RawSpeech } from './RawRecord';
 import fetchRecords from './NationalDietAPIHandler'; // Adjust the import path as necessary
+import fetchNationalDietRecords from './NationalDietRecord'; // Adjust the import path as necessary
 
 describe('fetchRecords', () => {
 	const apiUrl = process.env.DIET_API_ENDPOINT;
@@ -20,7 +21,7 @@ describe('fetchRecords', () => {
 			until: '2025-05-01',
 		};
 
-		const records = await fetchRecords(apiUrl, params);
+		const records = await fetchNationalDietRecords(apiUrl, params);
 
 		console.log(records)
 
@@ -55,6 +56,5 @@ describe('fetchRecords', () => {
 		expect(firstIssue.speeches[0]).toHaveProperty('speaker');
 		expect(firstIssue.speeches[0]).toHaveProperty('speech');
 
-		console.log('Formatted Data:', formattedData);
 	});
 });

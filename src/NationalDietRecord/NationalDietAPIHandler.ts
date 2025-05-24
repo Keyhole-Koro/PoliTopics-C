@@ -1,6 +1,6 @@
 import SpeechFormatter from './recordFormat';
 
-interface FetchParams {
+export interface FetchParams {
     from?: string;
     until?: string;
     [key: string]: any;
@@ -30,10 +30,7 @@ async function fetchRecords(endpoint: string, params: FetchParams = {}) {
             throw new Error(`API request failed: ${response.statusText}`);
         }
 
-        const jsonResponse = await response.json();
-        const mappedIssues = formatter.mapRecords(jsonResponse);
-
-        return await mappedIssues;
+        return await response.json();
     } catch (error) {
         console.error('Failed to fetch records:', error);
         throw error;
