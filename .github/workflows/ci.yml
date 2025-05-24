@@ -17,11 +17,6 @@ jobs:
         image: amazon/dynamodb-local
         ports:
           - 8000:8000
-        options: >-
-          --health-cmd "curl -f http://localhost:8000 || exit 1"
-          --health-interval 5s
-          --health-timeout 2s
-          --health-retries 20
 
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
