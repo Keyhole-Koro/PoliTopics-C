@@ -1,5 +1,13 @@
 .env
+env.json
+
 node_modules
-.DS_Store
 __snapshots__
+
+*.zip
+dist
+
+.aws-sam
 data
+
+layers

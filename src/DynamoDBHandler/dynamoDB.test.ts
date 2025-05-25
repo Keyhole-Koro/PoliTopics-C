@@ -1,4 +1,4 @@
-import { DynamoDBHandler } from './dynamoDB';
+import DynamoDBHandler from './dynamoDB';
 import { Article } from '@interfaces/Article';
 import fs from 'fs';
 import path from 'path';
@@ -30,7 +30,7 @@ describe.only('DynamoDBHandler', () => {
 
     it('should add and retrieve an article', async () => {
         // Add the sample article
-        await dbHandler.addArticle(sampleArticle);
+        await dbHandler.addRecord(sampleArticle);
 
         // Retrieve the article by ID
         const retrievedArticle = await dbHandler.getArticleById(sampleArticle.id);
@@ -45,7 +45,7 @@ describe.only('DynamoDBHandler', () => {
 
     it('should add and retrieve articles by keyword', async () => {
         // Add the sample article
-        await dbHandler.addArticle(sampleArticle);
+        await dbHandler.addRecord(sampleArticle);
         // Retrieve articles by keyword
         const articles = await dbHandler.getArticlesByKeyword(sampleArticle.keywords[0].keyword.toString());
         
@@ -56,7 +56,7 @@ describe.only('DynamoDBHandler', () => {
 
     it('should add and retrieve articles by participant', async () => {
         // Add the sample article
-        await dbHandler.addArticle(sampleArticle);
+        await dbHandler.addRecord(sampleArticle);
 
         // Retrieve articles by participant
         const articles = await dbHandler.getArticlesByParticipant(sampleArticle.participants[0].name);

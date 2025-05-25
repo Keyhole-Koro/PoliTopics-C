@@ -1,11 +1,10 @@
-import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
 import SpeechFormatter from './recordFormat';
 import { MapIssue } from '@interfaces/Record'; // Assuming these types exist in your project
 import { RawData, RawSpeech } from './RawRecord';
-import fetchRecords from './NationalDietAPIHandler'; // Adjust the import path as necessary
-import fetchNationalDietRecords from './NationalDietRecord'; // Adjust the import path as necessary
+
+import 'dotenv/config';
 
 describe('fetchRecords', () => {
 	const apiUrl = process.env.DIET_API_ENDPOINT;

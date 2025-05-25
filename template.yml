@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  ScheduledFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda_handler.handler   # <-- update to compiled JS path, no "src"
+      Runtime: nodejs22.x
+      CodeUri: dist/                   # <-- point to the compiled JS output folder
+      MemorySize: 128
+      Timeout: 60
+      Events:
+        ScheduledEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 hour)
+  SharedDepsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: shared-deps
+      Description: Shared dependencies layer
+      ContentUri: layers/shared-deps
+      CompatibleRuntimes:
+        - nodejs22.x

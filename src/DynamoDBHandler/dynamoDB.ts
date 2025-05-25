@@ -13,7 +13,7 @@ import {
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { Article } from "@interfaces/Article";
 
-export class DynamoDBHandler {
+class DynamoDBHandler {
   private readonly client: DynamoDBClient;
   private readonly ddbDocClient: DynamoDBDocumentClient;
   private readonly ARTICLE_TABLE_NAME = "Articles";
@@ -123,17 +123,17 @@ export class DynamoDBHandler {
     }
   }
 
-  async addNews(news: Article): Promise<void> {
-    await this.addArticle(news);
+  async addRecord(record: Article): Promise<void> {
+    await this.addArticle(record);
     console.log("Article added successfully.");
 
-    for (const keyword of news.keywords) {
-      await this.addKeyword(keyword.toString(), news.id.toString());
+    for (const key of record.keywords) {
+      await this.addKeyword(key.keyword, record.id);
     }
     console.log("Keywords added successfully.");
 
-    for (const participant of news.participants) {
-      await this.addParticipant(participant.name, news.id.toString());
+    for (const participant of record.participants) {
+      await this.addParticipant(participant.name, record.id);
     }
     console.log("Participants added successfully.");
   }
@@ -197,14 +197,6 @@ export class DynamoDBHandler {
         }
       },
     });
-
-    for (const key of article.keywords) {
-      await this.addKeyword(key.keyword, article.id);
-    }
-
-    for (const participant of article.participants) {
-      await this.addParticipant(participant.name, article.id);
-    }
 
     await this.putItem(command);
   }
@@ -327,3 +319,5 @@ export class DynamoDBHandler {
     }
   }
 }
+
+export default DynamoDBHandler;
