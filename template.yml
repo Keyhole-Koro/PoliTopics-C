@@ -1,25 +1,28 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
+Parameters:
+  NationalDietApiEndpoint:
+    Type: String
+  GeminiApiKey:
+    Type: String
+  AwsDynamoDbEndpoint:
+    Type: String
 
 Resources:
   ScheduledFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: lambda_handler.handler   # <-- update to compiled JS path, no "src"
+      FunctionName: "PoliTopics-C"
+      Handler: lambda_handler.handler
       Runtime: nodejs22.x
-      CodeUri: dist/                   # <-- point to the compiled JS output folder
+      CodeUri: dist/
       MemorySize: 128
       Timeout: 60
+      Environment:
+        Variables:
+          NATIONAL_DIET_API_ENDPOINT: !Ref NationalDietApiEndpoint
+          GEMINI_API_KEY: !Ref GeminiApiKey
+          AWS_DYNAMODB_ENDPOINT: !Ref AwsDynamoDbEndpoint
       Events:
         ScheduledEvent:
           Type: Schedule
           Properties:
-            Schedule: rate(1 hour)
-  SharedDepsLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: shared-deps
-      Description: Shared dependencies layer
-      ContentUri: layers/shared-deps
-      CompatibleRuntimes:
-        - nodejs22.x
+            Schedule: rate(1 day)

@@ -29,11 +29,14 @@ export const handler: Handler<ScheduledEvent> = async (event) => {
     );
 
 
+    const today = new Date().toISOString().split('T')[0];
+
     const records = await fetchNationalDietRecords(NATIONAL_DIET_API_ENDPOINT, {
-      from: '2025-01-01',
-      until: '2025-05-01',
+      from: today,
+      until: today,
       recordPacking: 'json',
     });
+    
     console.log("Fetched records:", records);
 
     const articles = await LLMSummarize(records, GEMINI_API_KEY);

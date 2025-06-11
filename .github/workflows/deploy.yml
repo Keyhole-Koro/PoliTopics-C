@@ -1,0 +1,47 @@
+name: Deploy Lambda Function to AWS
+
+on:
+  push:
+    branches:
+      - stage
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      NATIONAL_DIET_API_ENDPOINT: ${{ secrets.NATIONAL_DIET_API_ENDPOINT }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DYNAMODB_ENDPOINT: ${{ secrets.AWS_DYNAMODB_ENDPOINT }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-northeast-1
+
+      - name: Install AWS SAM CLI
+        run: pip install aws-sam-cli
+
+      - name: Build SAM application
+        run: sam build
+
+      - name: Deploy SAM application
+        run: |
+          sam deploy \
+            --stack-name my-scheduled-function-stack \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+            --region ap-northeast-1 \
+            --parameter-overrides \
+              NationalDietApiEndpoint=${{ secrets.NATIONAL_DIET_API_ENDPOINT }} \
+              GeminiApiKey=${{ secrets.GEMINI_API_KEY }} \
+              AwsDynamoDbEndpoint=${{ secrets.AWS_DYNAMODB_ENDPOINT }}
+  
