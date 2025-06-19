@@ -16,11 +16,6 @@ Resources:
       CodeUri: dist/
       MemorySize: 128
       Timeout: 60
-      Environment:
-        Variables:
-          NATIONAL_DIET_API_ENDPOINT: !Ref NationalDietApiEndpoint
-          GEMINI_API_KEY: !Ref GeminiApiKey
-          AWS_DYNAMODB_ENDPOINT: !Ref AwsDynamoDbEndpoint
       Events:
         ScheduledEvent:
           Type: Schedule

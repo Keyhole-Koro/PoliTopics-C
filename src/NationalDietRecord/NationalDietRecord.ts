@@ -1,10 +1,10 @@
 import fetchRecords, { FetchParams } from "./NationalDietAPIHandler";
-import SpeechFormatter from './recordFormat';
+import { RawMeetingData } from './RawData';
 
-async function fetchNationalDietRecords(endpoint: string, params: FetchParams = {}) {
-    const formatter = new SpeechFormatter();
-    const result = await fetchRecords(endpoint, params);
-    return formatter.mapRecords(result);
+async function fetchNationalDietRecords(
+    endpoint: string, params: FetchParams = {}
+): Promise<RawMeetingData> {
+    return await fetchRecords(endpoint, params);
 }
 
 export default fetchNationalDietRecords;

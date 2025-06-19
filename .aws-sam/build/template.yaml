@@ -1,9 +1,15 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
+Parameters:
+  NationalDietApiEndpoint:
+    Type: String
+  GeminiApiKey:
+    Type: String
+  AwsDynamoDbEndpoint:
+    Type: String
 Resources:
   ScheduledFunction:
     Type: AWS::Serverless::Function
     Properties:
+      FunctionName: PoliTopics-C
       Handler: lambda_handler.handler
       Runtime: nodejs22.x
       CodeUri: ScheduledFunction
@@ -13,14 +19,6 @@ Resources:
         ScheduledEvent:
           Type: Schedule
           Properties:
-            Schedule: rate(1 hour)
+            Schedule: rate(1 day)
     Metadata:
       SamResourceId: ScheduledFunction
-  SharedDepsLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: shared-deps
-      Description: Shared dependencies layer
-      ContentUri: ..\..\layers\shared-deps
-      CompatibleRuntimes:
-      - nodejs22.x

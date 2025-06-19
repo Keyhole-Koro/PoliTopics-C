@@ -7,7 +7,7 @@ class DynamoDBHandler {
         this.ARTICLE_TABLE_NAME = "Articles";
         this.KEYWORD_TABLE_NAME = "KeywordArticleIds";
         this.PARTICIPANT_TABLE_NAME = "ParticipantArticleIds";
-        this.REGION = "us-east-1";
+        this.REGION = "ap-northeast-3";
         this.DateIndex = "DateIndex";
         this.createdTables = new Set();
         this.client = new client_dynamodb_1.DynamoDBClient({

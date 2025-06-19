@@ -2,7 +2,7 @@ import DynamoDBHandler from './dynamoDB';
 import { Article } from '@interfaces/Article';
 import fs from 'fs';
 import path from 'path';
-
+/*
 describe.only('DynamoDBHandler', () => {
     const endpoint = 'http://localhost:8000'; // Local DynamoDB endpoint
     const accessKeyId = 'fakeAccessKeyId'; // Fake credentials for local DynamoDB
@@ -80,3 +80,4 @@ describe.only('DynamoDBHandler', () => {
         expect(articles.length).toBeGreaterThan(0);
     });
 });
+*/

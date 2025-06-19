@@ -1,27 +1,22 @@
-import { MapIssue } from '@interfaces/Record';
 
 import geminiAPI from './gemini';
 import { compose_prompt } from './prompt';
 import { Article } from '@interfaces/Article';
 
 async function LLMSummarize(
-  mappedRecords: Record<string, MapIssue>,
+  mappedIssue: any,
   GEMINI_API_KEY: string)
-  : Promise<Article[]>
+  : Promise<Article>
   {
 
-  const results: JSON[] = [];
-  
-  for (const [issueId, issue] of Object.entries(mappedRecords)) {
+  const issueText = JSON.stringify(mappedIssue, null, 2);
+  const result = await geminiAPI(GEMINI_API_KEY, compose_prompt(issueText));
 
-    const issueText = JSON.stringify(issue, null, 2);
-    const reslut = await geminiAPI(GEMINI_API_KEY, compose_prompt(issueText));
+  const json_result = JSON.parse(result);
+  // since dynamoDB stores id as a string, we need to convert it to string
+  json_result.id = json_result.id.toString();
 
-    results.push(JSON.parse(reslut));
-
-  }
-
-  return results.map(result => result as unknown as Article);
+  return json_result as Article;
 }
 
 export default LLMSummarize;

@@ -2,60 +2,90 @@ import { Handler, ScheduledEvent } from 'aws-lambda';
 
 import fetchNationalDietRecords from '@NationalDietRecord/NationalDietRecord';
 import LLMSummarize from '@LLMSummarize/LLMSummarize';
-import DynamoDBHandler from '@DynamoDBHandler/dynamoDB';
+import storeData from '@DynamoDBHandler/storeData';
+
+import { RawMeetingData, RawSpeechRecord } from '@NationalDietRecord/RawData';
+import { gatherSpeechesById } from '@NationalDietRecord/formatRecord';
 
 import 'dotenv/config';
 
+// Utility to safely get and validate required env vars
+function getEnvVar(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
+// Optional: move this into a /utils/logger.ts module
+function log(tag: string, ...messages: any[]) {
+  console.log(`[${tag}]`, ...messages);
+}
+
+// Core processing of a single issue
+async function processIssue(issueId: string, speeches: any, geminiKey: string) {
+  try {
+    const article = await LLMSummarize(speeches, geminiKey);
+    log('SUMMARIZE', `Generated summary for issue ${issueId}`);
+
+    const response = await storeData(article);
+    if (!response.ok) {
+      throw new Error(`Storage failed: ${response.statusText}`);
+    }
+    console.log('LOG', article);
+
+    log('STORE', `Article stored successfully for issue ${issueId}`);
+  } catch (err) {
+    console.error(`[PROCESS ISSUE] Error with issue ${issueId}:`, err);
+  }
+}
+
 export const handler: Handler<ScheduledEvent> = async (event) => {
   try {
-    console.log("Scheduled event received:", event);
+    log('EVENT', 'Scheduled event received:', JSON.stringify(event));
 
-    const NATIONAL_DIET_API_ENDPOINT = process.env.NATIONAL_DIET_API_ENDPOINT || 'https://api.example.com/records';
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-    
-    const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID;
-    const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY;
-    const AWS_DYNAMODB_ENDPOINT = process.env.AWS_DYNAMODB_ENDPOINT;
-
-    if (!NATIONAL_DIET_API_ENDPOINT || !GEMINI_API_KEY || !AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY || !AWS_DYNAMODB_ENDPOINT) {
-      console.error("Missing required environment variables.");
-      throw new Error("Environment variables are not properly set.");
-    }
-
-    const dynamoDBHandler = new DynamoDBHandler(
-      AWS_DYNAMODB_ENDPOINT,
-      AWS_ACCESS_KEY_ID,
-      AWS_SECRET_ACCESS_KEY
-    );
-
+    const NATIONAL_DIET_API_ENDPOINT = getEnvVar('NATIONAL_DIET_API_ENDPOINT');
+    const GEMINI_API_KEY = getEnvVar('GEMINI_API_KEY');
 
     const today = new Date().toISOString().split('T')[0];
 
-    const records = await fetchNationalDietRecords(NATIONAL_DIET_API_ENDPOINT, {
+    const issues: RawMeetingData = await fetchNationalDietRecords(NATIONAL_DIET_API_ENDPOINT, {
       from: today,
       until: today,
       recordPacking: 'json',
     });
-    
-    console.log("Fetched records:", records);
 
-    const articles = await LLMSummarize(records, GEMINI_API_KEY);
-    console.log("Generated summaries:", articles);
-
-    for (const article of articles) {
-      await dynamoDBHandler.addRecord(article);
+    if (issues.numberOfRecords === 0 || !issues.meetingRecord.length) {
+      const message = `No records found for ${today}.`;
+      log('INFO', message);
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ message }),
+      };
     }
+
+    const formattedData = gatherSpeechesById(issues); // optionally type this explicitly
+
+    await Promise.all(
+      Object.entries(formattedData).map(([issueId, speeches]) =>
+        processIssue(issueId, speeches, GEMINI_API_KEY)
+      )
+    );
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ message: "Event processed" }),
+      body: JSON.stringify({ message: 'Event processed successfully.' }),
     };
+
   } catch (error) {
-    console.error("Error processing event:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error('[ERROR] Error processing event:', error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ message: "Internal Server Error", error: errorMessage }),
+      body: JSON.stringify({
+        message: 'Internal Server Error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }),
     };
   }
 };

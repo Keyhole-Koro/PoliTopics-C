@@ -1,4 +1,3 @@
-
 export interface RawSpeechRecord {
   speechID: string;
   speechOrder: number;

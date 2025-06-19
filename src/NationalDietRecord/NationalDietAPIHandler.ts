@@ -1,4 +1,4 @@
-import SpeechFormatter from './recordFormat';
+import { RawMeetingData } from './RawData';
 
 export interface FetchParams {
     from?: string;
@@ -6,8 +6,9 @@ export interface FetchParams {
     [key: string]: any;
 }
 
-async function fetchRecords(endpoint: string, params: FetchParams = {}) {
-    const formatter = new SpeechFormatter();
+async function fetchRecords(
+    endpoint: string, params: FetchParams = {}
+): Promise<RawMeetingData> {
 
     const {
         from = '0000-01-01',  // Default start date if not specified

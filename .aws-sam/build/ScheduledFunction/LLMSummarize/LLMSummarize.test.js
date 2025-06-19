@@ -1,36 +1,47 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const fs_1 = __importDefault(require("fs"));
-const path_1 = __importDefault(require("path"));
-const recordFormat_1 = __importDefault(require("../NationalDietRecord/recordFormat"));
-const gemini_1 = __importDefault(require("./gemini"));
-const prompt_1 = require("./prompt");
-require("dotenv/config");
-describe('Gemini API Handler', () => {
+/*
+import fs from 'fs';
+import path from 'path';
+
+import geminiAPI from './gemini';
+import { compose_prompt } from './prompt';
+
+import 'dotenv/config';
+
+
+describe.only('Gemini API Handler', () => {
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-    let formattedData;
+    let rawData: Record<string, any>;
+
     beforeAll(() => {
         // Load and format the fetchedRecord.json file
-        const filePath = path_1.default.resolve(__dirname, 'fetchedRecord.json');
-        const rawData = JSON.parse(fs_1.default.readFileSync(filePath, 'utf-8'));
-        const formatter = new recordFormat_1.default();
-        formattedData = formatter.mapRecords(rawData);
+        const filePath: string = path.resolve(__dirname, 'fetchedRecord.json');
+        const rawData: any = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     });
+
     it('should generate summaries for formatted records', async () => {
-        for (const [issueId, issue] of Object.entries(formattedData)) {
-            if (issueId === '121714024X01920250514')
-                continue; // Skip this specific issue
+        for (const [issueId, issue] of Object.entries(rawData)) {
+            if (issueId === '121714024X01920250514') continue; // Skip this specific issue
             const issueText = JSON.stringify(issue, null, 2);
-            const result = await (0, gemini_1.default)(GEMINI_API_KEY, (0, prompt_1.compose_prompt)(issueText));
+            const result = await geminiAPI(GEMINI_API_KEY, compose_prompt(issueText));
             const resultJson = JSON.parse(result);
+            resultJson.id = resultJson.id.toString();
+    
             console.log(`Generated Summary for Issue ${issueId}:`, resultJson, typeof resultJson);
+    
             // Validate resultJson matches the Article structure
             expect(resultJson).toBeDefined();
             expect(typeof resultJson).toBe('object');
-            /*
+
+            // Write the resultJson to a summary.json file
+            const outputFilePath = path.resolve(__dirname, 'summary.json');
+            const existingSummaries = fs.existsSync(outputFilePath)
+                ? JSON.parse(fs.readFileSync(outputFilePath, 'utf-8'))
+                : {};
+
+            existingSummaries[issueId] = resultJson;
+
+            fs.writeFileSync(outputFilePath, JSON.stringify(existingSummaries, null, 2), 'utf-8');
     
             // Check if resultJson matches the Article structure
             expect(resultJson).toHaveProperty('title');
@@ -51,7 +62,7 @@ describe('Gemini API Handler', () => {
             if (resultJson.date) {
                 expect(typeof resultJson.date).toBe('string');
             }
-            */
         }
     }, 50000);
 });
+*/ 

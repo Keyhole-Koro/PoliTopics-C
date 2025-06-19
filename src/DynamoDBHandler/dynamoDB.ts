@@ -19,7 +19,7 @@ class DynamoDBHandler {
   private readonly ARTICLE_TABLE_NAME = "Articles";
   private readonly KEYWORD_TABLE_NAME = "KeywordArticleIds";
   private readonly PARTICIPANT_TABLE_NAME = "ParticipantArticleIds";
-  private readonly REGION = "us-east-1";
+  private readonly REGION = "ap-northeast-3";
   private readonly DateIndex = "DateIndex";
 
   private createdTables = new Set<string>();

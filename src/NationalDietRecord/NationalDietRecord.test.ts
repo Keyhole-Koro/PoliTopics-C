@@ -1,13 +1,13 @@
 import fs from 'fs';
 import path from 'path';
-import SpeechFormatter from './recordFormat';
-import { MapIssue } from '@interfaces/Record'; // Assuming these types exist in your project
-import { RawData, RawSpeech } from './RawRecord';
+import fetchNationalDietRecords from './NationalDietRecord';
+import { gatherSpeechesById } from './formatRecord';
+import { RawMeetingData, RawSpeechRecord } from './RawData';
 
 import 'dotenv/config';
 
 describe('fetchRecords', () => {
-	const apiUrl = process.env.DIET_API_ENDPOINT;
+	const apiUrl = process.env.NATIONAL_DIET_API_ENDPOINT;
 
 	/*
 	it('should fetch records successfully', async () => {
@@ -22,23 +22,31 @@ describe('fetchRecords', () => {
 
 		const records = await fetchNationalDietRecords(apiUrl, params);
 
-		console.log(records)
+		const outputRawFilePath = path.resolve(__dirname, 'rawRecord.json');
+		fs.writeFileSync(outputRawFilePath, JSON.stringify(records, null, 2), 'utf-8');
 
 		expect(records).toBeDefined();
-	});
-	*/
 
+		// Save the fetched records to a JSON file for further testing
+		const outputFilePath = path.resolve(__dirname, 'fetchedRecord.json');
+		fs.writeFileSync(outputFilePath, JSON.stringify(records, null, 2), 'utf-8');
+
+		*/
 	it('should format the fetched records correctly', () => {
 		// Load the fetchedRecord.json file
 		const filePath: string = path.resolve(__dirname, 'fetchedRecord.json');
-		const rawData: RawData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-
-		// Create an instance of SpeechFormatter
-		const formatter: SpeechFormatter = new SpeechFormatter();
+		console.log(`Loading data from: ${filePath}`);
+		const rawData: RawMeetingData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
 
 		// Format the records
-		const formattedData: Record<string, MapIssue> = formatter.mapRecords(rawData);
+		const formattedData: Record<string, { meetingInfo: any; speeches: RawSpeechRecord[] }> = gatherSpeechesById(rawData);
 
+		// Save the formatted data to a JSON file for inspection
+		const outputFilePath = path.resolve(__dirname, 'formattedRecord.json');
+		fs.writeFileSync(outputFilePath, JSON.stringify(formattedData, null, 2), 'utf-8');
+		console.log(`Formatted data saved to: ${outputFilePath}`);
+
+		/*
 		// Perform assertions
 		expect(formattedData).toBeDefined();
 		expect(typeof formattedData).toBe('object');
@@ -54,6 +62,6 @@ describe('fetchRecords', () => {
 		expect(Array.isArray(firstIssue.speeches)).toBe(true);
 		expect(firstIssue.speeches[0]).toHaveProperty('speaker');
 		expect(firstIssue.speeches[0]).toHaveProperty('speech');
-
+		*/
 	});
 });
