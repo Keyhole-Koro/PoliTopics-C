@@ -1,8 +1,3 @@
-OK、これまでのやり取りを踏まえて、**Terraform + Lambda + DynamoDB（3テーブル）+ S3ロギング**対応の `README.md` を英語でまとめました。
-Terraformでテーブル名やLambda名を固定化し、`.env` でのテーブル名指定は不要にしています。
-
----
-
 ````markdown
 # PoliTopics-C
 
