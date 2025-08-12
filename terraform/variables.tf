@@ -1,0 +1,56 @@
+variable "region" {
+  description = "AWS region"
+  type        = string
+  default     = "ap-northeast-3"
+}
+
+variable "app_name" {
+  description = "Application name prefix"
+  type        = string
+  default     = "politopics"
+}
+
+variable "schedule_expression" {
+  description = "EventBridge schedule expression"
+  type        = string
+  default     = "rate(1 day)"
+}
+
+variable "lambda_zip_path" {
+  description = "Path to Lambda zip (built from dist)"
+  type        = string
+  default     = "../build/lambda.zip"
+}
+
+variable "gemini_api_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "national_diet_api_endpoint" {
+  type        = string
+  description = "National Diet API endpoint"
+  default     = "https://kokkai.ndl.go.jp/api/meeting?limit=50"
+}
+
+variable "from_date" {
+  type    = string
+  default = ""
+}
+
+variable "until_date" {
+  type    = string
+  default = ""
+}
+
+variable "keyword_table_name" {
+  description = "DynamoDB table for keyword -> articleId links"
+  type        = string
+  default     = "politopics-keywords"
+}
+
+variable "participant_table_name" {
+  description = "DynamoDB table for participant -> articleId links"
+  type        = string
+  default     = "politopics-participants"
+}

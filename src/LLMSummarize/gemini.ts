@@ -21,7 +21,7 @@ async function geminiAPI(
 
         // Get the generative model.
         const model: GenerativeModel = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
+            model: "gemini-2.5-flash",
             generationConfig: {"responseMimeType": "application/json"} });
 
         // Generate content using the uploaded file URI and prompt text.

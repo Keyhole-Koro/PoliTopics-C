@@ -1,0 +1,34 @@
+name: Terraform Apply
+on:
+  push: { branches: ["stage"] }
+pull_request: { branches: ["main"] }
+  workflow_dispatch:
+jobs:
+  tf-apply:
+    runs-on: ubuntu-latest
+    permissions: { id-token: write, contents: read }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install & Build
+        run: |
+          npm ci
+          npm run build
+          mkdir -p build
+          ( cd dist && zip -r ../build/lambda.zip . )
+      - uses: hashicorp/setup-terraform@v3
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-3
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init
+      - name: Terraform Plan
+        working-directory: ./terraform
+        run: terraform plan -var="region=ap-northeast-3"
+      - name: Terraform Apply (stage only)
+        if: github.ref == 'refs/heads/stage'
+        working-directory: ./terraform
+        run: terraform apply -auto-approve -var="region=ap-northeast-3"

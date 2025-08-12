@@ -23,8 +23,37 @@ const region = process.env.AWS_REGION || "ap-northeast-3";
 const endpoint = process.env.AWS_ENDPOINT_URL;
 const s3 = new S3Client({ region, ...(endpoint ? { endpoint } : {}) });
 
+// ---- helpers ---------------------------------------------------
+const CONCURRENCY = Number(process.env.CONCURRENCY || 4);
+
+type TaskOk = { ok: true; baseId: string; articleId?: string };
+type TaskNg = { ok: false; baseId: string; error: { message: string; stack?: string } };
+type TaskResult = TaskOk | TaskNg;
+
+function serializeError(e: unknown) {
+  if (e instanceof Error) return { message: e.message, stack: e.stack };
+  return { message: String(e) };
+}
+
+async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: number): Promise<T[]> {
+  const results = new Array<T>(tasks.length);
+  let next = 0;
+
+  const workers = Array(Math.min(limit, tasks.length))
+    .fill(0)
+    .map(async () => {
+      while (true) {
+        const i = next++;
+        if (i >= tasks.length) break;
+        results[i] = await tasks[i]();
+      }
+    });
+
+  await Promise.all(workers);
+  return results;
+}
+
 async function logToS3(kind: "error" | "success", payload: any) {
-  // Reuse ERROR_BUCKET for both error and success logs (different prefixes)
   const bucket = process.env.ERROR_BUCKET;
   if (!bucket) return;
   const key = `${kind}/${new Date().toISOString()}-${crypto.randomUUID()}.json`;
@@ -43,6 +72,21 @@ async function logToS3(kind: "error" | "success", payload: any) {
   }
 }
 
+function todayStrJST(): string {
+  const parts = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const y = parts.find(p => p.type === 'year')!.value;
+  const m = parts.find(p => p.type === 'month')!.value;
+  const d = parts.find(p => p.type === 'day')!.value;
+  return `${y}-${m}-${d}`; // e.g. 2025-08-12
+}
+
+// ----------------------------------------------------------------
+
 export const handler: Handler = async (event: ScheduledEvent) => {
   const runId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
@@ -50,9 +94,12 @@ export const handler: Handler = async (event: ScheduledEvent) => {
   try {
     const API_ENDPOINT = getEnvVar("NATIONAL_DIET_API_ENDPOINT");
     const GEMINI_API_KEY = getEnvVar("GEMINI_API_KEY");
-    const FROM = process.env.FROM_DATE;
-    const UNTIL = process.env.UNTIL_DATE;
+    
+    const today = todayStrJST();
+    const FROM = (process.env.FROM_DATE && process.env.FROM_DATE.trim()) || today;
+    const UNTIL = (process.env.UNTIL_DATE && process.env.UNTIL_DATE.trim()) || today;
 
+    console.log(`[${runId}] Start. concurrency=${CONCURRENCY}`);
     // 1) Fetch
     const raw: RawMeetingData = await fetchNationalDietRecords(API_ENDPOINT, {
       ...(FROM ? { from: FROM } : {}),
@@ -61,40 +108,60 @@ export const handler: Handler = async (event: ScheduledEvent) => {
 
     // 2) Group speeches by the base speech id
     const mapById = gatherSpeechesById(raw);
+    const entries = Object.entries(mapById);
+    console.log(`[${runId}] groups=${entries.length}`);
 
-    // 3) For each speech group -> summarize & store
-    let okCount = 0;
-    const storedIds: string[] = [];
+    // 3) Parallel summarize + store (with concurrency limit)
+    const tasks: Array<() => Promise<TaskResult>> = entries.map(([baseId, bundle]) => {
+      return async () => {
+        const mappedIssue = {
+          baseId,
+          meetingInfo: bundle.meetingInfo,
+          speeches: bundle.speeches,
+        };
+        try {
+          console.log(`[${runId}] -> ${baseId} summarizing...`);
+          const article = await LLMSummarize(mappedIssue, GEMINI_API_KEY);
 
-    for (const [baseId, bundle] of Object.entries(mapById)) {
-      const mappedIssue = {
-        baseId,
-        meetingInfo: bundle.meetingInfo,
-        speeches: bundle.speeches,
+          console.log(`[${runId}] -> ${baseId} storing... id=${article?.id}`);
+          await storeData(article);
+
+          console.log(`[${runId}] -> ${baseId} done.`);
+          return { ok: true, baseId, articleId: article?.id } as TaskOk;
+        } catch (e) {
+          const err = serializeError(e);
+          console.error(`[${runId}] !! ${baseId} failed: ${err.message}`);
+          return { ok: false, baseId, error: err } as TaskNg;
+        }
       };
+    });
 
-      const article = await LLMSummarize(mappedIssue, GEMINI_API_KEY);
-      await storeData(article);
-      okCount++;
-      if (article?.id) storedIds.push(article.id);
-    }
+    const results = await runWithConcurrency(tasks, CONCURRENCY);
+    const ok = results.filter(r => r.ok) as TaskOk[];
+    const ng = results.filter(r => !r.ok) as TaskNg[];
 
+    const storedIds = ok.map(r => r.articleId!).filter(Boolean);
     const finishedAt = new Date().toISOString();
-    const successPayload = {
+
+    const payload = {
       runId,
       startedAt,
       finishedAt,
-      stored: okCount,
+      groups: entries.length,
+      stored: ok.length,
+      failed: ng.length,
       storedIds,
+      failures: ng,
       filters: { from: FROM, until: UNTIL },
       eventSource: event?.source ?? "manual/local",
+      concurrency: CONCURRENCY,
     };
 
-    await logToS3("success", successPayload);
+    await logToS3("success", payload);
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ message: 'Event processed successfully.', ...successPayload }),
+      body: JSON.stringify({ message: 'Event processed (parallel).', ...payload }),
     };
   } catch (error) {
     const finishedAt = new Date().toISOString();

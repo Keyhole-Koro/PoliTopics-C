@@ -1,5 +1,5 @@
 .env
-env.json
+.env.tmpl
 
 node_modules
 __snapshots__
@@ -13,3 +13,6 @@ data
 layers
 
 src/*.json
+
+.terraform
+.terraform.lock.hcl
