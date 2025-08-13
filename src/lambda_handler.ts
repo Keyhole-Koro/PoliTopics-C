@@ -1,6 +1,6 @@
 import { Handler, ScheduledEvent } from 'aws-lambda';
 
-import fetchNationalDietRecords from '@NationalDietRecord/NationalDietRecord';
+import fetchNationalDietRecords from '@NationalDietRecord/NationalDietAPIHandler';
 import LLMSummarize from '@LLMSummarize/LLMSummarize';
 import storeData from '@DynamoDBHandler/storeData';
 

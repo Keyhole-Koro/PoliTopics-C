@@ -6,7 +6,7 @@ export interface FetchParams {
     [key: string]: any;
 }
 
-async function fetchRecords(
+async function fetchNationalDietRecords(
     endpoint: string, params: FetchParams = {}
 ): Promise<RawMeetingData> {
 
@@ -25,6 +25,8 @@ async function fetchRecords(
 
     const url = `${endpoint}?${queryParams}`;
 
+    console.log(`Fetching records from: ${url}`);
+
     try {
         const response = await fetch(url);
         if (!response.ok) {
@@ -38,4 +40,4 @@ async function fetchRecords(
     }
 }
 
-export default fetchRecords;
+export default fetchNationalDietRecords;
