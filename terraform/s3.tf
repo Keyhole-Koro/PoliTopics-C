@@ -18,7 +18,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs" {
     id     = "expire-after-90-days"
     status = "Enabled"
 
-    filter {}  # apply to the whole bucket
+    filter {} # apply to the whole bucket
 
     expiration {
       days = 90

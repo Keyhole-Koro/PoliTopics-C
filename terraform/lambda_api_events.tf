@@ -1,7 +1,7 @@
 resource "aws_iam_role" "lambda_role" {
   name = "${local.name}-lambda-role"
   assume_role_policy = jsonencode({
-    Version = "2012-10-17",
+    Version   = "2012-10-17",
     Statement = [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }]
   })
   tags = local.tags
@@ -14,15 +14,15 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_logs" {
 
 # Allow access to all three tables
 resource "aws_iam_policy" "ddb_policy" {
-  name   = "${local.name}-ddb-policy"
+  name = "${local.name}-ddb-policy"
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
       Effect = "Allow",
       Action = [
-        "dynamodb:PutItem","dynamodb:BatchWriteItem",
-        "dynamodb:GetItem","dynamodb:BatchGetItem",
-        "dynamodb:Query","dynamodb:DescribeTable"
+        "dynamodb:PutItem", "dynamodb:BatchWriteItem",
+        "dynamodb:GetItem", "dynamodb:BatchGetItem",
+        "dynamodb:Query", "dynamodb:DescribeTable"
       ],
       Resource = [
         aws_dynamodb_table.article.arn,
@@ -39,9 +39,9 @@ resource "aws_iam_role_policy_attachment" "ddb_attach" {
 
 # S3 write for logs (as-is)
 resource "aws_iam_policy" "s3_policy" {
-  name   = "${local.name}-s3-policy"
+  name = "${local.name}-s3-policy"
   policy = jsonencode({
-    Version = "2012-10-17",
+    Version   = "2012-10-17",
     Statement = [{ Effect = "Allow", Action = ["s3:PutObject"], Resource = "${aws_s3_bucket.logs.arn}/*" }]
   })
 }
@@ -74,13 +74,13 @@ resource "aws_lambda_function" "handler" {
       KEYWORD_TABLE_NAME     = aws_dynamodb_table.keywords.name
       PARTICIPANT_TABLE_NAME = aws_dynamodb_table.participants.name
 
-      ERROR_BUCKET                 = aws_s3_bucket.logs.bucket
-      GEMINI_API_KEY               = var.gemini_api_key
-      NATIONAL_DIET_API_ENDPOINT   = var.national_diet_api_endpoint
-      RUN_API_KEY                   = var.run_api_key
+      ERROR_BUCKET               = aws_s3_bucket.logs.bucket
+      GEMINI_API_KEY             = var.gemini_api_key
+      NATIONAL_DIET_API_ENDPOINT = var.national_diet_api_endpoint
+      RUN_API_KEY                = var.run_api_key
 
-      FROM_DATE                    = var.from_date
-      UNTIL_DATE                   = var.until_date
+      FROM_DATE  = var.from_date
+      UNTIL_DATE = var.until_date
       # CONCURRENCY               = "4" # optional
     }
   }
@@ -134,9 +134,6 @@ resource "aws_apigatewayv2_route" "run" {
   route_key = "POST /run"
   target    = "integrations/${aws_apigatewayv2_integration.run_lambda.id}"
 }
-
-data "aws_caller_identity" "current" {}
-variable "region" { type = string }
 
 resource "aws_lambda_permission" "apigw_run_invoke" {
   statement_id  = "AllowAPIGwInvokeRun"
