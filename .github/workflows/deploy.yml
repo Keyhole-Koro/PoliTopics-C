@@ -1,8 +1,6 @@
 name: Terraform Apply
 on:
   push: { branches: ["stage"] }
-pull_request: { branches: ["main"] }
-  workflow_dispatch:
 jobs:
   tf-apply:
     runs-on: ubuntu-latest
