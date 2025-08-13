@@ -1,4 +1,3 @@
-````markdown
 # PoliTopics-C
 
 A serverless application that fetches National Diet records, summarizes them with LLM (Gemini), and stores the results in DynamoDB, with logs stored in S3.  
@@ -14,6 +13,7 @@ The project uses **Terraform** for infrastructure management, **TypeScript** for
   - Stores structured articles in DynamoDB (`politopics-article`)
   - Indexes article IDs in `politopics-keywords` and `politopics-participants`
   - Logs success/error events to S3 bucket (`politopics-error-logs-*`)
+  - **Date range defaults to the *previous day in JST* if `FROM_DATE`/`UNTIL_DATE` are not provided**
 
 - **DynamoDB Tables**:
   1. `politopics-article` — Stores full article records
@@ -21,7 +21,7 @@ The project uses **Terraform** for infrastructure management, **TypeScript** for
   3. `politopics-participants` — Maps participants → article IDs
 
 - **S3 Logs**:
-  - `success/` and `error/` logs for each Lambda execution
+  - `success/` and `error/` logs per Lambda execution
   - Useful for debugging and audit
 
 ---
@@ -50,9 +50,27 @@ AWS_SECRET_ACCESS_KEY=test
 NATIONAL_DIET_API_ENDPOINT=https://api.example.com
 GEMINI_API_KEY=your_gemini_api_key_here
 
+# Logging (optional): if set, Lambda writes run logs to this bucket
+ERROR_BUCKET=politopics-error-logs-123456789012-ap-northeast-3
+
+# Optional: override Lambda task concurrency (default: 4)
+CONCURRENCY=4
+
 # Optional: LocalStack endpoint
 # AWS_ENDPOINT_URL=http://localhost:4566
-````
+
+# Optional: date filters (YYYY-MM-DD)
+# If omitted, both default to the PREVIOUS DAY in JST.
+# FROM_DATE=2025-08-11
+# UNTIL_DATE=2025-08-11
+```
+
+### Date Range Behavior
+
+- Time zone is **Asia/Tokyo (JST)**.
+- If `FROM_DATE` and `UNTIL_DATE` are **not** set, both default to **yesterday (JST)**.
+- To process a specific day, set `FROM_DATE` and `UNTIL_DATE` to the same `YYYY-MM-DD`.
+- To process a multi-day range, set both accordingly (inclusive).
 
 ---
 
@@ -66,7 +84,7 @@ localstack start -d
 
 ### 2. Bootstrap Local Resources
 
-This will create DynamoDB tables and S3 bucket locally:
+This will create DynamoDB tables and the S3 bucket locally:
 
 ```bash
 bash ./scripts/local-bootstrap-awscli.sh
@@ -75,6 +93,11 @@ bash ./scripts/local-bootstrap-awscli.sh
 ### 3. Run Lambda Locally
 
 ```bash
+# Defaults to previous day in JST if no dates are set
+npx ts-node -r tsconfig-paths/register scripts/local-invoke.ts
+
+# Example: run for a specific day
+FROM_DATE=2025-08-11 UNTIL_DATE=2025-08-11 \
 npx ts-node -r tsconfig-paths/register scripts/local-invoke.ts
 ```
 
@@ -154,7 +177,7 @@ log_bucket = "politopics-error-logs-123456789012-ap-northeast-3"
 
 ## Logs
 
-Lambda logs execution results to S3:
+Lambda logs execution results to S3 (when `ERROR_BUCKET` is set):
 
 * `success/` → Successful runs (metadata + stored IDs)
 * `error/` → Failed runs (error stack trace)
