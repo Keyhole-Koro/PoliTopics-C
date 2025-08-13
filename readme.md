@@ -87,7 +87,7 @@ localstack start -d
 This will create DynamoDB tables and the S3 bucket locally:
 
 ```bash
-bash ./scripts/local-bootstrap-awscli.sh
+bash ./scripts/local-bootstrap.sh
 ```
 
 ### 3. Run Lambda Locally

@@ -279,6 +279,7 @@ export const handler: Handler = async (event: AnyEvent) => {
             : event.body;
           try { body = JSON.parse(raw); } catch { return json(400, { error: 'invalid_json' }); }
         }
+        console.log(body);
         from = parseYmdOrNull(body?.from);
         until = parseYmdOrNull(body?.until);
       } else {
