@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import fetchNationalDietRecords from './NationalDietRecord';
+import fetchNationalDietRecords from './NationalDietAPIHandler';
 import { gatherSpeechesById } from './formatRecord';
 import { RawMeetingData, RawSpeechRecord } from './RawData';
 

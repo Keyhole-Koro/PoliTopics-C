@@ -1,11 +1,11 @@
 import { Handler, ScheduledEvent } from 'aws-lambda';
 
-import fetchNationalDietRecords from '@NationalDietRecord/NationalDietAPIHandler';
+import fetchNationalDietRecords from '@NationalDietAPIHandler/NationalDietAPIHandler';
 import LLMSummarize from '@LLMSummarize/LLMSummarize';
 import storeData from '@DynamoDBHandler/storeData';
 
-import { RawMeetingData } from '@NationalDietRecord/RawData';
-import { gatherSpeechesById } from '@NationalDietRecord/formatRecord';
+import { RawMeetingData } from '@NationalDietAPIHandler/RawData';
+import { gatherSpeechesById } from '@NationalDietAPIHandler/formatRecord';
 
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "node:crypto";
@@ -160,9 +160,10 @@ export const handler: Handler = async (event: ScheduledEvent) => {
     });
 
     // 2) Group speeches by the base speech id
-    const mapById = gatherSpeechesById(raw);
-    const entries = Object.entries(mapById);
-    console.log(`[${runId}] groups=${entries.length}`);
+      const mapById = gatherSpeechesById(raw);
+      // Cast to a typed record so bundle is not 'unknown'
+      const entries = Object.entries(mapById as Record<string, { meetingInfo: any; speeches: any }>);
+      console.log(`[${runId}] groups=${entries.length}`);
 
     // 3) Parallel summarize + store (with concurrency limit)
     const tasks: Array<() => Promise<TaskResult>> = entries.map(([baseId, bundle]) => {

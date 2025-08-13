@@ -4,7 +4,7 @@ module.exports = {
   moduleNameMapper: {
     '^@DynamoDBHandler/(.*)$': '<rootDir>/src/DynamoDBHandler/$1',
     '^@LLMSummarize/(.*)$': '<rootDir>/src/LLMSummarize/$1',
-    '^@NationalDietRecord/(.*)$': '<rootDir>/src/NationalDietRecord/$1',
+    '^@NationalDietAPIHandler/(.*)$': '<rootDir>/src/NationalDietAPIHandler/$1',
     '^@services/(.*)$': '<rootDir>/src/services/$1',
     '^@interfaces/(.*)$': '<rootDir>/src/interfaces/$1',
   },
