@@ -54,3 +54,9 @@ variable "participant_table_name" {
   type        = string
   default     = "politopics-participants"
 }
+
+variable "run_api_key" {
+  type        = string
+  sensitive   = true
+  description = "API key for POST /run (validated against x-api-key header)."
+}

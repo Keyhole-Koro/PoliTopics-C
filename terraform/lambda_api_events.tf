@@ -77,6 +77,8 @@ resource "aws_lambda_function" "handler" {
       ERROR_BUCKET                 = aws_s3_bucket.logs.bucket
       GEMINI_API_KEY               = var.gemini_api_key
       NATIONAL_DIET_API_ENDPOINT   = var.national_diet_api_endpoint
+      RUN_API_KEY                   = var.run_api_key
+
       FROM_DATE                    = var.from_date
       UNTIL_DATE                   = var.until_date
       # CONCURRENCY               = "4" # optional
@@ -119,19 +121,31 @@ resource "aws_apigatewayv2_api" "http" {
   tags = local.tags
 }
 
-resource "aws_apigatewayv2_integration" "lambda" {
+resource "aws_apigatewayv2_integration" "run_lambda" {
   api_id                 = aws_apigatewayv2_api.http.id
   integration_type       = "AWS_PROXY"
-  integration_method     = "POST"
   integration_uri        = aws_lambda_function.handler.invoke_arn
   payload_format_version = "2.0"
+  timeout_milliseconds   = 29000
 }
 
-resource "aws_apigatewayv2_route" "post_run" {
+resource "aws_apigatewayv2_route" "run" {
   api_id    = aws_apigatewayv2_api.http.id
   route_key = "POST /run"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+  target    = "integrations/${aws_apigatewayv2_integration.run_lambda.id}"
 }
+
+data "aws_caller_identity" "current" {}
+variable "region" { type = string }
+
+resource "aws_lambda_permission" "apigw_run_invoke" {
+  statement_id  = "AllowAPIGwInvokeRun"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.handler.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "arn:aws:execute-api:${var.region}:${data.aws_caller_identity.current.account_id}:${aws_apigatewayv2_api.http.id}/*/POST/run"
+}
+
 
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.http.id

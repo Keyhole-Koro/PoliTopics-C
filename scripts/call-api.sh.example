@@ -1,0 +1,9 @@
+# POST (recommended)
+curl -X POST "https://<your-api-id>.execute-api.ap-northeast-3.amazonaws.com/run" \
+  -H "content-type: application/json" \
+  -H "x-api-key: YOUR_SECRET_KEY" \
+  -d '{"from":"2025-08-10","until":"2025-08-12"}'
+
+# GET (optional)
+curl -X GET "https://<your-api-id>.execute-api.ap-northeast-3.amazonaws.com/run?from=2025-08-10&until=2025-08-12" \
+  -H "x-api-key: YOUR_SECRET_KEY"
