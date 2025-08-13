@@ -159,11 +159,22 @@ export const handler: Handler = async (event: ScheduledEvent) => {
       ...(UNTIL ? { until: UNTIL } : {}),
     });
 
+    if (!raw || !raw.meetingRecord || raw.meetingRecord.length === 0) {
+      return {
+        statusCode: 200,
+        body: JSON.stringify({
+          message: 'No records found for the specified date range.',
+          runId,
+          filters: { from: FROM, until: UNTIL },
+        }),
+      };
+    }
+
     // 2) Group speeches by the base speech id
-      const mapById = gatherSpeechesById(raw);
-      // Cast to a typed record so bundle is not 'unknown'
-      const entries = Object.entries(mapById as Record<string, { meetingInfo: any; speeches: any }>);
-      console.log(`[${runId}] groups=${entries.length}`);
+    const mapById = gatherSpeechesById(raw);
+    // Cast to a typed record so bundle is not 'unknown'
+    const entries = Object.entries(mapById as Record<string, { meetingInfo: any; speeches: any }>);
+    console.log(`[${runId}] groups=${entries.length}`);
 
     // 3) Parallel summarize + store (with concurrency limit)
     const tasks: Array<() => Promise<TaskResult>> = entries.map(([baseId, bundle]) => {
