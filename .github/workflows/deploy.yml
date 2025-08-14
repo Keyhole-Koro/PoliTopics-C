@@ -7,23 +7,22 @@ on:
 jobs:
   tf-apply:
     runs-on: ubuntu-latest
-    # Use OIDC; static keys are not required if you assume a role
     permissions:
-      id-token: write
+      id-token: write         # for OIDC
       contents: read
 
-    # Avoid putting long-lived AWS keys here when using OIDC
     env:
-      # Pass app secrets to Terraform variables
+      # App secrets -> Terraform variables
       TF_VAR_gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
       TF_VAR_national_diet_api_endpoint: ${{ secrets.NATIONAL_DIET_API_ENDPOINT }}
       TF_VAR_run_api_key: ${{ secrets.RUN_API_KEY }}
 
-      # Region for this environment
+      # Region
       TF_VAR_region: ap-northeast-3
 
-      TF_VAR_apigw_api_id: ${{ secrets.APIGW_API_ID }}
-      TF_VAR_apigw_route_id: ${{ secrets.APIGW_ROUTE_ID }}
+      # APIGW IDs from GitHub Secrets
+      APIGW_API_ID:   ${{ secrets.APIGW_API_ID }}
+      APIGW_ROUTE_ID: ${{ secrets.APIGW_ROUTE_ID }}
 
     steps:
       # ---- Build Lambda package ----
@@ -44,10 +43,9 @@ jobs:
       # ---- Setup Terraform ----
       - uses: hashicorp/setup-terraform@v3
         with:
-          # Pin to a version compatible with 'import' blocks (>= 1.5)
-          terraform_version: 1.6.6
+          terraform_version: 1.6.6   # >=1.5 is fine; pinned for reproducibility
 
-      # ---- Configure AWS via OIDC ----
+      # ---- Configure AWS via OIDC (no static keys needed) ----
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
@@ -58,65 +56,55 @@ jobs:
         working-directory: ./terraform
         run: terraform init -input=false
 
-      # ---- Export variables for Terraform (zip path, API/Route IDs for import blocks) ----
-      - name: Export TF vars (zip path, API/Route IDs)
+      # ---- Export TF vars (zip path) ----
+      - name: Export TF vars
+        working-directory: ./terraform
+        run: echo "TF_VAR_lambda_zip_path=${GITHUB_WORKSPACE}/build/lambda.zip" >> "$GITHUB_ENV"
+
+      # ---- Preflight: adopt existing APIGW route via Secrets ----
+      - name: Adopt existing APIGW route (import via secrets)
         working-directory: ./terraform
         shell: bash
+        env:
+          FUNCTION_NAME: politopics-c   # your Lambda name (fixed in tf)
         run: |
           set -euo pipefail
 
-          # 1) Pass the built ZIP path to Terraform (absolute path is safer)
-          echo "TF_VAR_lambda_zip_path=${GITHUB_WORKSPACE}/build/lambda.zip" >> "$GITHUB_ENV"
-
-          # 2) Read API_ID from Terraform state if the API resource is already managed
-          #    (If not present in state, this will be empty and we skip; Terraform will create the API.)
-          API_ID="32zq1w51ac"
-          if terraform state show -no-color aws_apigatewayv2_api.http >/dev/null 2>&1; then
-            API_ID=$(terraform state show -no-color aws_apigatewayv2_api.http | sed -n 's/^[[:space:]]*id[[:space:]]*=[[:space:]]*"\(.*\)".*/\1/p' | head -n1)
+          # Import the APIGW route if not yet in state (uses secrets)
+          if [ -n "${APIGW_API_ID:-}" ] && [ -n "${APIGW_ROUTE_ID:-}" ]; then
+            if ! terraform state show -no-color aws_apigatewayv2_route.post_run >/dev/null 2>&1; then
+              echo "Importing route ${APIGW_API_ID}/${APIGW_ROUTE_ID} ..."
+              terraform import aws_apigatewayv2_route.post_run "${APIGW_API_ID}/${APIGW_ROUTE_ID}" || true
+            else
+              echo "Route already managed in state. Skipping import."
+            fi
+          else
+            echo "Secrets APIGW_API_ID / APIGW_ROUTE_ID not set. Skipping route import."
           fi
 
-          # 3) If we have an API_ID, attempt to discover existing POST /run route (for import)
-          ROUTE_ID=""
-          if [ -n "${API_ID}" ]; then
-            ROUTE_ID=$(aws apigatewayv2 get-routes --api-id "${API_ID}" \
-              --query 'Items[?RouteKey==`POST /run`].RouteId' --output text 2>/dev/null || true)
+          # (Optional) adopt existing Lambda permission by stable SID to avoid 409
+          SID="AllowExecutionFromAPIGatewayV2"
+          if ! terraform state show -no-color aws_lambda_permission.allow_apigw >/dev/null 2>&1; then
+            echo "Attempting to import Lambda permission ${FUNCTION_NAME}/${SID} (if exists)..."
+            terraform import aws_lambda_permission.allow_apigw "${FUNCTION_NAME}/${SID}" || true
           fi
 
-          # 4) Export variables used by imports.tf (only if we actually discovered IDs)
-          if [ -n "${API_ID}" ] && [ "${API_ID}" != "None" ]; then
-            echo "TF_VAR_api_id=${API_ID}" >> "$GITHUB_ENV"
-          fi
-          if [ -n "${ROUTE_ID}" ] && [ "${ROUTE_ID}" != "None" ]; then
-            echo "TF_VAR_existing_post_run_route_id=${ROUTE_ID}" >> "$GITHUB_ENV"
-          fi
-
-          echo "Discovered API_ID=${API_ID:-<none>} ROUTE_ID=${ROUTE_ID:-<none>}"
-
-      - name: Terraform FMT (auto-fix)
-        working-directory: ./terraform
-        run: terraform fmt -recursive
-
-      # ---- (Optional) Lint & Validate ----
+      # ---- Terraform Format & Validate ----
       - name: Terraform FMT & Validate
         working-directory: ./terraform
         run: |
-          terraform fmt -check -recursive
+          terraform fmt -recursive
           terraform validate
 
       # ---- Plan / Apply ----
       - name: Terraform Plan
         working-directory: ./terraform
         env:
-          # Ensure the same vars are visible in this step
           TF_VAR_lambda_zip_path: ${{ env.TF_VAR_lambda_zip_path }}
-          TF_VAR_api_id: ${{ env.TF_VAR_api_id }}
-          TF_VAR_existing_post_run_route_id: ${{ env.TF_VAR_existing_post_run_route_id }}
         run: terraform plan -input=false -lock-timeout=5m -parallelism=1 -var="region=ap-northeast-3"
 
       - name: Terraform Apply
         working-directory: ./terraform
         env:
           TF_VAR_lambda_zip_path: ${{ env.TF_VAR_lambda_zip_path }}
-          TF_VAR_api_id: ${{ env.TF_VAR_api_id }}
-          TF_VAR_existing_post_run_route_id: ${{ env.TF_VAR_existing_post_run_route_id }}
         run: terraform apply -auto-approve -input=false -lock-timeout=5m -parallelism=1 -var="region=ap-northeast-3"

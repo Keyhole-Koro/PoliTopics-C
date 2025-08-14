@@ -1,4 +1,15 @@
 #############################################
+# Locals
+#############################################
+locals {
+  name = var.app_name
+  tags = {
+    Project = var.app_name
+    Managed = "terraform"
+  }
+}
+
+#############################################
 # IAM role for Lambda
 #############################################
 resource "aws_iam_role" "lambda_role" {
@@ -22,7 +33,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_logs" {
 
 #############################################
 # DynamoDB permissions (all three tables)
-# NOTE: the three tables (article/keywords/participants) must exist elsewhere.
+# NOTE: The three tables (article/keywords/participants) must exist elsewhere.
 #############################################
 resource "aws_iam_policy" "ddb_policy" {
   name = "${local.name}-ddb-policy"
@@ -132,7 +143,7 @@ resource "aws_lambda_function" "handler" {
       # Error logging sink
       ERROR_BUCKET = aws_s3_bucket.logs.bucket
 
-      # Secrets and config (fill via TF vars or workspace vars)
+      # Secrets and config (passed via TF vars)
       GEMINI_API_KEY             = var.gemini_api_key
       NATIONAL_DIET_API_ENDPOINT = var.national_diet_api_endpoint
       RUN_API_KEY                = var.run_api_key
@@ -185,7 +196,7 @@ resource "aws_apigatewayv2_api" "http" {
   tags = local.tags
 }
 
-# Single integration (keep this one; remove any duplicate "run_lambda")
+# Single integration
 resource "aws_apigatewayv2_integration" "lambda" {
   api_id                 = aws_apigatewayv2_api.http.id
   integration_type       = "AWS_PROXY"
@@ -194,7 +205,7 @@ resource "aws_apigatewayv2_integration" "lambda" {
   timeout_milliseconds   = 29000
 }
 
-# Single route (keep this one; remove any duplicate "run")
+# Single route (always defined here; we will "adopt if exists" in the CI step)
 resource "aws_apigatewayv2_route" "post_run" {
   api_id    = aws_apigatewayv2_api.http.id
   route_key = "POST /run"
@@ -210,29 +221,14 @@ resource "aws_apigatewayv2_stage" "default" {
 }
 
 # Lambda permission for API Gateway (single source of truth)
-# NOTE: We keep only this permission and delete any duplicate permission resources.
+# Wide allow is operationally stable in production. You can later restrict to /*/POST/run if needed.
 resource "aws_lambda_permission" "allow_apigw" {
   statement_id  = "AllowExecutionFromAPIGatewayV2"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.handler.function_name
   principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
 
-  # Wide allow is operationally stable in production. If you need to restrict,
-  # switch to "${aws_apigatewayv2_api.http.execution_arn}/*/POST/run" *after* the system is stable.
-  source_arn = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
-
-  # Ensure route and stage exist before granting permission (reduces eventual-consistency issues)
-  depends_on = [
-    aws_apigatewayv2_route.post_run,
-    aws_apigatewayv2_stage.default
-  ]
-}
-
-data "aws_apigatewayv2_api" "http" {
-  api_id = var.apigw_api_id
-}
-
-data "aws_apigatewayv2_route" "run" {
-  api_id   = var.apigw_api_id
-  route_id = var.apigw_route_id
+  # Depend on stage so the execution ARN shape is settled (route may be imported).
+  depends_on = [aws_apigatewayv2_stage.default]
 }

@@ -43,36 +43,8 @@ variable "until_date" {
   default = ""
 }
 
-variable "keyword_table_name" {
-  description = "DynamoDB table for keyword -> articleId links"
-  type        = string
-  default     = "politopics-keywords"
-}
-
-variable "participant_table_name" {
-  description = "DynamoDB table for participant -> articleId links"
-  type        = string
-  default     = "politopics-participants"
-}
-
 variable "run_api_key" {
   type        = string
   sensitive   = true
-  description = "API key for POST /run (validated against x-api-key header)."
-}
-
-# RouteId of the existing 'POST /run' route (e.g., hnm2tbm)
-variable "existing_post_run_route_id" {
-  type        = string
-  description = "Existing RouteId for 'POST /run'"
-}
-
-variable "apigw_api_id" {
-  type        = string
-  description = "Existing HTTP API id"
-}
-
-variable "apigw_route_id" {
-  type        = string
-  description = "Existing RouteId for 'POST /run'"
+  description = "API key for POST /run (validated against x-api-key header)"
 }
