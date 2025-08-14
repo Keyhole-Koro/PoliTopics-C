@@ -174,7 +174,7 @@ async function executePipeline(
   // 1) Fetch
   const raw: RawMeetingData = await fetchNationalDietRecords(API_ENDPOINT, { from: fromYmd, until: untilYmd });
 
-  if (!raw || !Array.isArray((raw as any).meetingRecord) || (raw as any).meetingRecord.length === 0) {
+  if (raw.numberOfRecords === 0) {
     const payload = {
       message: 'No records found for the specified date range.',
       runId,
@@ -184,6 +184,7 @@ async function executePipeline(
     await logToS3("success", {
       runId, startedAt, finishedAt: new Date().toISOString(),
       groups: 0, stored: 0, failed: 0, storedIds: [],
+      raw: raw,
       failures: [], filters: { from: fromYmd, until: untilYmd },
       eventSource, concurrency: CONCURRENCY
     });
