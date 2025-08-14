@@ -69,10 +69,10 @@ variable "existing_post_run_route_id" {
 
 variable "apigw_api_id" {
   type      = string
-  sensitive = true
+  description = "Existing HTTP API id"
 }
 
 variable "apigw_route_id" {
   type      = string
-  sensitive = true
+  description = "Existing RouteId for 'POST /run'"
 }
