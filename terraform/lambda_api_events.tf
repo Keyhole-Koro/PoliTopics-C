@@ -4,7 +4,7 @@
 resource "aws_iam_role" "lambda_role" {
   name = "${local.name}-lambda-role"
   assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
+    Version = "2012-10-17",
     Statement = [{
       Effect    = "Allow",
       Principal = { Service = "lambda.amazonaws.com" },
@@ -29,8 +29,8 @@ resource "aws_iam_policy" "ddb_policy" {
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
-      Effect  = "Allow",
-      Action  = [
+      Effect = "Allow",
+      Action = [
         "dynamodb:PutItem", "dynamodb:BatchWriteItem",
         "dynamodb:GetItem", "dynamodb:BatchGetItem",
         "dynamodb:Query", "dynamodb:DescribeTable"
@@ -57,8 +57,8 @@ resource "aws_iam_policy" "ddb_links_policy" {
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
-      Effect  = "Allow",
-      Action  = [
+      Effect = "Allow",
+      Action = [
         "dynamodb:PutItem",
         "dynamodb:BatchWriteItem",
         "dynamodb:Query",
@@ -87,8 +87,8 @@ resource "aws_iam_policy" "s3_policy" {
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [{
-      Effect  = "Allow",
-      Action  = ["s3:PutObject"],
+      Effect   = "Allow",
+      Action   = ["s3:PutObject"],
       Resource = "${aws_s3_bucket.logs.arn}/*"
     }]
   })
@@ -233,6 +233,6 @@ data "aws_apigatewayv2_api" "http" {
 }
 
 data "aws_apigatewayv2_route" "run" {
-  api_id = var.apigw_api_id
+  api_id   = var.apigw_api_id
   route_id = var.apigw_route_id
 }

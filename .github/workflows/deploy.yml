@@ -92,6 +92,10 @@ jobs:
 
           echo "Discovered API_ID=${API_ID:-<none>} ROUTE_ID=${ROUTE_ID:-<none>}"
 
+      - name: Terraform FMT (auto-fix)
+        working-directory: ./terraform
+        run: terraform fmt -recursive
+
       # ---- (Optional) Lint & Validate ----
       - name: Terraform FMT & Validate
         working-directory: ./terraform
