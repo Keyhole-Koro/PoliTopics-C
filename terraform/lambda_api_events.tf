@@ -1,15 +1,4 @@
 #############################################
-# Locals
-#############################################
-locals {
-  name = var.app_name
-  tags = {
-    Project = var.app_name
-    Managed = "terraform"
-  }
-}
-
-#############################################
 # IAM role for Lambda
 #############################################
 resource "aws_iam_role" "lambda_role" {
