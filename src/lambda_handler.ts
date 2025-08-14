@@ -174,7 +174,7 @@ async function executePipeline(
   // 1) Fetch
   const raw: RawMeetingData = await fetchNationalDietRecords(API_ENDPOINT, { from: fromYmd, until: untilYmd });
 
-  if (raw.numberOfRecords === 0) {
+  if (raw.numberOfRecords && raw.numberOfRecords === 0) {
     const payload = {
       message: 'No records found for the specified date range.',
       runId,
