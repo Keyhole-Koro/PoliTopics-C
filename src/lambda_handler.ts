@@ -255,6 +255,7 @@ export const handler: Handler = async (event: AnyEvent) => {
   try {
     // ===== HTTP API path =====
     if (isHttpApiEvent(event)) {
+      console.log(`[${runId}] HTTP API request: ${event.requestContext.http.method} ${event.requestContext.http.path}`);
       const method = event.requestContext.http.method;
       const headers = lowercaseHeaders(event.headers);
 

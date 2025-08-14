@@ -1,4 +1,5 @@
 name: Terraform Apply
+
 on:
   push:
     branches: ["stage"]
@@ -6,42 +7,112 @@ on:
 jobs:
   tf-apply:
     runs-on: ubuntu-latest
-    permissions: { id-token: write, contents: read }
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    # Use OIDC; static keys are not required if you assume a role
+    permissions:
+      id-token: write
+      contents: read
 
-      TF_VAR_diet_api_endpoint: ${{ secrets.DIET_API_ENDPOINT }}
+    # Avoid putting long-lived AWS keys here when using OIDC
+    env:
+      # Pass app secrets to Terraform variables
       TF_VAR_gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
       TF_VAR_national_diet_api_endpoint: ${{ secrets.NATIONAL_DIET_API_ENDPOINT }}
       TF_VAR_run_api_key: ${{ secrets.RUN_API_KEY }}
 
+      # Region for this environment
+      TF_VAR_region: ap-northeast-3
+
+      TF_VAR_apigw_api_id: ${{ secrets.APIGW_API_ID }}
+      TF_VAR_apigw_route_id: ${{ secrets.APIGW_ROUTE_ID }}
+
     steps:
+      # ---- Build Lambda package ----
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with:
+          node-version: 20
+
       - name: Install & Build
         run: |
           npm ci
           npm run build
           mkdir -p build
           ( cd dist && zip -r ../build/lambda.zip . )
+          ls -l build/
 
+      # ---- Setup Terraform ----
       - uses: hashicorp/setup-terraform@v3
+        with:
+          # Pin to a version compatible with 'import' blocks (>= 1.5)
+          terraform_version: 1.6.6
 
+      # ---- Configure AWS via OIDC ----
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ap-northeast-3
 
+      # ---- Terraform Init ----
       - name: Terraform Init
         working-directory: ./terraform
-        run: terraform init
+        run: terraform init -input=false
 
+      # ---- Export variables for Terraform (zip path, API/Route IDs for import blocks) ----
+      - name: Export TF vars (zip path, API/Route IDs)
+        working-directory: ./terraform
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 1) Pass the built ZIP path to Terraform (absolute path is safer)
+          echo "TF_VAR_lambda_zip_path=${GITHUB_WORKSPACE}/build/lambda.zip" >> "$GITHUB_ENV"
+
+          # 2) Read API_ID from Terraform state if the API resource is already managed
+          #    (If not present in state, this will be empty and we skip; Terraform will create the API.)
+          API_ID="32zq1w51ac"
+          if terraform state show -no-color aws_apigatewayv2_api.http >/dev/null 2>&1; then
+            API_ID=$(terraform state show -no-color aws_apigatewayv2_api.http | sed -n 's/^[[:space:]]*id[[:space:]]*=[[:space:]]*"\(.*\)".*/\1/p' | head -n1)
+          fi
+
+          # 3) If we have an API_ID, attempt to discover existing POST /run route (for import)
+          ROUTE_ID=""
+          if [ -n "${API_ID}" ]; then
+            ROUTE_ID=$(aws apigatewayv2 get-routes --api-id "${API_ID}" \
+              --query 'Items[?RouteKey==`POST /run`].RouteId' --output text 2>/dev/null || true)
+          fi
+
+          # 4) Export variables used by imports.tf (only if we actually discovered IDs)
+          if [ -n "${API_ID}" ] && [ "${API_ID}" != "None" ]; then
+            echo "TF_VAR_api_id=${API_ID}" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${ROUTE_ID}" ] && [ "${ROUTE_ID}" != "None" ]; then
+            echo "TF_VAR_existing_post_run_route_id=${ROUTE_ID}" >> "$GITHUB_ENV"
+          fi
+
+          echo "Discovered API_ID=${API_ID:-<none>} ROUTE_ID=${ROUTE_ID:-<none>}"
+
+      # ---- (Optional) Lint & Validate ----
+      - name: Terraform FMT & Validate
+        working-directory: ./terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform validate
+
+      # ---- Plan / Apply ----
       - name: Terraform Plan
         working-directory: ./terraform
-        run: terraform plan -var="region=ap-northeast-3"
+        env:
+          # Ensure the same vars are visible in this step
+          TF_VAR_lambda_zip_path: ${{ env.TF_VAR_lambda_zip_path }}
+          TF_VAR_api_id: ${{ env.TF_VAR_api_id }}
+          TF_VAR_existing_post_run_route_id: ${{ env.TF_VAR_existing_post_run_route_id }}
+        run: terraform plan -input=false -lock-timeout=5m -parallelism=1 -var="region=ap-northeast-3"
 
       - name: Terraform Apply
         working-directory: ./terraform
-        run: terraform apply -auto-approve -var="region=ap-northeast-3"
+        env:
+          TF_VAR_lambda_zip_path: ${{ env.TF_VAR_lambda_zip_path }}
+          TF_VAR_api_id: ${{ env.TF_VAR_api_id }}
+          TF_VAR_existing_post_run_route_id: ${{ env.TF_VAR_existing_post_run_route_id }}
+        run: terraform apply -auto-approve -input=false -lock-timeout=5m -parallelism=1 -var="region=ap-northeast-3"
