@@ -20,6 +20,25 @@ resource "aws_dynamodb_table" "article" {
   }
 
   tags = local.tags
+
+  attribute {
+    name = "month"
+    type = "S"
+  }
+
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+
+  global_secondary_index {
+    name               = "MonthDateIndex"
+    hash_key           = "month"
+    range_key          = "date"
+    projection_type    = "ALL"
+  }
+
 }
 
 resource "aws_dynamodb_table" "keywords" {
@@ -39,6 +58,19 @@ resource "aws_dynamodb_table" "keywords" {
   }
 
   tags = local.tags
+
+  global_secondary_index {
+    name               = "DataIdKeywordIndex"
+    hash_key           = "dataId"
+    range_key          = "keyword"
+    projection_type    = "ALL"
+  }
+
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
 }
 
 resource "aws_dynamodb_table" "participants" {
@@ -58,4 +90,17 @@ resource "aws_dynamodb_table" "participants" {
   }
 
   tags = local.tags
+
+  global_secondary_index {
+    name               = "DataIdParticipantIndex"
+    hash_key           = "dataId"
+    range_key          = "participant"
+    projection_type    = "ALL"
+  }
+
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
 }
