@@ -113,7 +113,7 @@ resource "aws_lambda_function" "handler" {
   source_code_hash = filebase64sha256(var.lambda_zip_path)
 
   # Performance
-  timeout       = 900
+  timeout       = 300
   memory_size   = 1024
   architectures = ["x86_64"]
 

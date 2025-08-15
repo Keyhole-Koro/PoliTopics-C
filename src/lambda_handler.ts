@@ -5,8 +5,9 @@ import fetchNationalDietRecords from '@NationalDietAPIHandler/NationalDietAPIHan
 import LLMSummarize from '@LLMSummarize/LLMSummarize';
 import storeData from '@DynamoDBHandler/storeData';
 
-import { RawMeetingData } from '@NationalDietAPIHandler/RawData';
+import { RawMeetingData, RawSpeechRecord } from '@NationalDietAPIHandler/RawData';
 import { gatherSpeechesById } from '@NationalDietAPIHandler/formatRecord';
+import { Article } from '@interfaces/Article';
 
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "node:crypto";
@@ -145,6 +146,23 @@ const parseYmdOrNull = (v?: unknown): string | null => {
   return Number.isNaN(d.getTime()) ? null : s;
 };
 
+// ---------- Insert original speech text into Article dialogs --------
+function insertOriginalText(article: Article, speeches: RawSpeechRecord[]): void {
+  if (!article?.dialogs?.length || !speeches?.length) return;
+
+  const speechMap = new Map<number, string>(
+    speeches.map(s => [s.speechOrder, s.speech])
+  );
+
+  for (const dialog of article.dialogs) {
+    const original = speechMap.get(dialog.order);
+    if (original !== undefined) {
+      dialog.original_text = original;
+    }
+  }
+}
+
+
 // ---------- core pipeline (shared by HTTP / EventBridge) --------
 
 type PipelinePayload = {
@@ -192,9 +210,8 @@ async function executePipeline(
   }
 
   // 2) Group speeches by baseId
-  const mapById = gatherSpeechesById(raw as any);
+  const mapById = gatherSpeechesById(raw as RawMeetingData);
   const entries = Object.entries(mapById as Record<string, { meetingInfo: any; speeches: any }>);
-  console.log(`[${runId}] groups=${entries.length}`);
 
   // 3) Parallel summarize + store
   const tasks: Array<() => Promise<TaskResult>> = entries.map(([baseId, bundle]) => {
@@ -202,7 +219,9 @@ async function executePipeline(
       const mappedIssue = { baseId, meetingInfo: bundle.meetingInfo, speeches: bundle.speeches };
       try {
         console.log(`[${runId}] -> ${baseId} summarizing...`);
-        const article = await LLMSummarize(mappedIssue, GEMINI_API_KEY);
+        const article: Article = await LLMSummarize(mappedIssue, GEMINI_API_KEY);
+
+        insertOriginalText(article, bundle.speeches);
 
         console.log(`[${runId}] -> ${baseId} storing... id=${article?.id}`);
         await storeData(article);
@@ -281,7 +300,6 @@ export const handler: Handler = async (event: AnyEvent) => {
             : event.body;
           try { body = JSON.parse(raw); } catch { return json(400, { error: 'invalid_json' }); }
         }
-        console.log(body);
         from = parseYmdOrNull(body?.from);
         until = parseYmdOrNull(body?.until);
       } else {

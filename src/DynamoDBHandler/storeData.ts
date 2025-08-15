@@ -2,64 +2,72 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   PutCommand,
+  DeleteCommand,
   BatchWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { ConditionalCheckFailedException } from "@aws-sdk/client-dynamodb";
 import { Article } from "@interfaces/Article";
 
 const region = process.env.AWS_REGION || "ap-northeast-3";
 const endpoint = process.env.AWS_ENDPOINT_URL;
 
-// Fixed table names with optional env override (not required to set)
-const ARTICLE_TABLE =
-  process.env.ARTICLE_TABLE_NAME || "politopics-article";
-const KEYWORD_TABLE =
-  process.env.KEYWORD_TABLE_NAME || "politopics-keywords";
-const PARTICIPANT_TABLE =
-  process.env.PARTICIPANT_TABLE_NAME || "politopics-participants";
+// Fixed table names with optional env override
+const ARTICLE_TABLE = process.env.ARTICLE_TABLE_NAME || "politopics-article";
+const KEYWORD_TABLE = process.env.KEYWORD_TABLE_NAME || "politopics-keywords";
+const PARTICIPANT_TABLE = process.env.PARTICIPANT_TABLE_NAME || "politopics-participants";
 
 const ddb = new DynamoDBClient({ region, ...(endpoint ? { endpoint } : {}) });
 const doc = DynamoDBDocumentClient.from(ddb);
 
 /**
- * Persist the article into the main "politopics-article" table (HASH=id),
- * and create link items into:
- *   - "politopics-keywords"     (PK=keyword, SK=dataId)
- *   - "politopics-participants" (PK=participant, SK=dataId)
- *
- * The main table also exposes GSI "DateIndex" on attribute "date".
+ * Store an article and its related keywords and participants in DynamoDB.
+ * If the article already exists, delete it (and its related links) first,
+ * then insert the new data.
  */
 export default async function storeData(article: Article) {
-  // 1) Put the article document (idempotent by condition)
-  try {
+  // 1) Delete existing main article (if exists)
+  await doc.send(
+    new DeleteCommand({
+      TableName: ARTICLE_TABLE,
+      Key: { id: article.id },
+    })
+  );
+
+  // 2) Delete existing keyword links (if any)
+  for (const kw of article.keywords ?? []) {
     await doc.send(
-      new PutCommand({
-        TableName: ARTICLE_TABLE,
-        Item: article, // expected to include 'id' (HASH) and 'date' (for GSI)
-        ConditionExpression: "attribute_not_exists(#id)",
-        ExpressionAttributeNames: { "#id": "id" },
+      new DeleteCommand({
+        TableName: KEYWORD_TABLE,
+        Key: { keyword: kw.keyword, dataId: article.id },
       })
     );
-  } catch (e) {
-    // If already exists, treat as success (idempotent)
-    if (!(e instanceof ConditionalCheckFailedException)) {
-      throw e;
-    }
   }
 
-  // 2) Build link writes (25 items per BatchWrite)
+  // 3) Delete existing participant links (if any)
+  for (const p of article.participants ?? []) {
+    await doc.send(
+      new DeleteCommand({
+        TableName: PARTICIPANT_TABLE,
+        Key: { participant: p.name, dataId: article.id },
+      })
+    );
+  }
+
+  // 4) Insert the new article (main table)
+  await doc.send(
+    new PutCommand({
+      TableName: ARTICLE_TABLE,
+      Item: article,
+    })
+  );
+
+  // 5) Prepare new keyword and participant link items
   const writes: Array<{ PutRequest: { Item: Record<string, any> } }> = [];
 
   for (const kw of article.keywords ?? []) {
     const keyword = (kw.keyword ?? "").trim();
     if (!keyword) continue;
     writes.push({
-      PutRequest: {
-        Item: {
-          keyword,
-          dataId: article.id,
-        },
-      },
+      PutRequest: { Item: { keyword, dataId: article.id } },
     });
   }
 
@@ -67,19 +75,14 @@ export default async function storeData(article: Article) {
     const participant = (p.name ?? "").trim();
     if (!participant) continue;
     writes.push({
-      PutRequest: {
-        Item: {
-          participant,
-          dataId: article.id,
-        },
-      },
+      PutRequest: { Item: { participant, dataId: article.id } },
     });
   }
 
-  // 3) Flush links in chunks
+  // 6) Batch write new keyword and participant links (25 items per batch)
   while (writes.length) {
     const chunk = writes.splice(0, 25);
-    // keywords
+
     const kwItems = chunk.filter((x) => "keyword" in x.PutRequest.Item);
     if (kwItems.length) {
       await doc.send(
@@ -88,7 +91,7 @@ export default async function storeData(article: Article) {
         })
       );
     }
-    // participants
+
     const ptItems = chunk.filter((x) => "participant" in x.PutRequest.Item);
     if (ptItems.length) {
       await doc.send(

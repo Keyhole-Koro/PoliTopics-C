@@ -58,6 +58,7 @@ export interface Dialog {
   speaker_group: string;
   speaker_position: string;
   speaker_role: string;
+  original_text: string;
   summary: string;
   soft_summary: string;
   response_to: ResponseTo[];

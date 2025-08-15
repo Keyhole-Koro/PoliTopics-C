@@ -1,17 +1,9 @@
-
-export interface RawSpeechRecord {
-  speechID: string;
-  speechOrder: number;
-  speaker: string;
-  speakerYomi: string | null;
-  speakerGroup: string | null;
-  speakerPosition: string | null;
-  speakerRole: string | null;
-  speech: string;
-  startPage: number;
-  createTime: string;
-  updateTime: string;
-  speechURL: string;
+export interface RawMeetingData {
+  numberOfRecords: number;
+  numberOfReturn: number;
+  startRecord: number;
+  nextRecordPosition: number;
+  meetingRecord: RawMeetingRecord[];
 }
 
 export interface RawMeetingRecord {
@@ -27,10 +19,18 @@ export interface RawMeetingRecord {
   speechRecord: RawSpeechRecord[];
 }
 
-export interface RawMeetingData {
-  numberOfRecords: number;
-  numberOfReturn: number;
-  startRecord: number;
-  nextRecordPosition: number;
-  meetingRecord: RawMeetingRecord[];
+
+export interface RawSpeechRecord {
+  speechID: string;
+  speechOrder: number;
+  speaker: string;
+  speakerYomi: string | null;
+  speakerGroup: string | null;
+  speakerPosition: string | null;
+  speakerRole: string | null;
+  speech: string;
+  startPage: number;
+  createTime: string;
+  updateTime: string;
+  speechURL: string;
 }
