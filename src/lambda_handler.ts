@@ -27,6 +27,8 @@ const region = process.env.AWS_REGION || "ap-northeast-3";
 const endpoint = process.env.AWS_ENDPOINT_URL;
 const s3 = new S3Client({ region, ...(endpoint ? { endpoint } : {}) });
 
+const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL_NAME || "gemini-2.5-flash";
+
 // ---- helpers ---------------------------------------------------
 
 /**
@@ -219,7 +221,7 @@ async function executePipeline(
       const mappedIssue = { baseId, meetingInfo: bundle.meetingInfo, speeches: bundle.speeches };
       try {
         console.log(`[${runId}] -> ${baseId} summarizing...`);
-        const article: Article = await LLMSummarize(mappedIssue, GEMINI_API_KEY);
+        const article: Article = await LLMSummarize(GEMINI_MODEL_NAME, mappedIssue, GEMINI_API_KEY);
 
         insertOriginalText(article, bundle.speeches);
 

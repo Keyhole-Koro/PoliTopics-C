@@ -13,6 +13,7 @@ jobs:
 
     env:
       # App secrets -> Terraform variables
+      TF_VAR_GEMINI_MODEL_NAME: ${{ secrets.GEMINI_MODEL_NAME }}
       TF_VAR_gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
       TF_VAR_national_diet_api_endpoint: ${{ secrets.NATIONAL_DIET_API_ENDPOINT }}
       TF_VAR_run_api_key: ${{ secrets.RUN_API_KEY }}

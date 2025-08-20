@@ -12,6 +12,7 @@ type GenerateSummaryResult = Promise<string>;
  */
 
 async function geminiAPI(
+    model_name: string,
     apiKey: string,
     promptText: string
 ): GenerateSummaryResult {
@@ -21,7 +22,7 @@ async function geminiAPI(
 
         // Get the generative model.
         const model: GenerativeModel = genAI.getGenerativeModel({ 
-            model: "gemini-2.5-flash",
+            model: model_name,
             generationConfig: {"responseMimeType": "application/json"} });
 
         // Generate content using the uploaded file URI and prompt text.

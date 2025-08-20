@@ -1,5 +1,0 @@
-{
-  "source": "aws.events",
-  "detail-type": "Scheduled Event",
-  "time": "2025-08-11T06:32:25.021760"
-}

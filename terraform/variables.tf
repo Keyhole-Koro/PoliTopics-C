@@ -22,6 +22,12 @@ variable "lambda_zip_path" {
   default     = "../build/lambda.zip"
 }
 
+variable "gemini_model_name" {
+  description = "Gemini model name"
+  type        = string
+  default     = "gemini-2.5-flash"
+}
+
 variable "gemini_api_key" {
   type      = string
   sensitive = true
