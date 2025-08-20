@@ -24,35 +24,8 @@ const doc = DynamoDBDocumentClient.from(ddb);
  * then insert the new data.
  */
 export default async function storeData(article: Article) {
-  // 1) Delete existing main article (if exists)
-  await doc.send(
-    new DeleteCommand({
-      TableName: ARTICLE_TABLE,
-      Key: { id: article.id },
-    })
-  );
 
-  // 2) Delete existing keyword links (if any)
-  for (const kw of article.keywords ?? []) {
-    await doc.send(
-      new DeleteCommand({
-        TableName: KEYWORD_TABLE,
-        Key: { keyword: kw.keyword, dataId: article.id },
-      })
-    );
-  }
-
-  // 3) Delete existing participant links (if any)
-  for (const p of article.participants ?? []) {
-    await doc.send(
-      new DeleteCommand({
-        TableName: PARTICIPANT_TABLE,
-        Key: { participant: p.name, dataId: article.id },
-      })
-    );
-  }
-
-  // 4) Insert the new article (main table)
+  // Insert the new article (main table)
   await doc.send(
     new PutCommand({
       TableName: ARTICLE_TABLE,
@@ -60,7 +33,7 @@ export default async function storeData(article: Article) {
     })
   );
 
-  // 5) Prepare new keyword and participant link items
+  // Prepare new keyword and participant link items
   const writes: Array<{ PutRequest: { Item: Record<string, any> } }> = [];
 
   for (const kw of article.keywords ?? []) {
@@ -79,7 +52,7 @@ export default async function storeData(article: Article) {
     });
   }
 
-  // 6) Batch write new keyword and participant links (25 items per batch)
+  // Batch write new keyword and participant links (25 items per batch)
   while (writes.length) {
     const chunk = writes.splice(0, 25);
 
