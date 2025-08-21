@@ -1,10 +1,10 @@
-// src/LLMSummarize/pipeline.ts
 // Summarization pipeline that NEVER cuts dialog.original_text.
 // - Build Dialog[] from RawMeetingRecord (order by speechID part / speechOrder)
 // - Pack dialogs greedily by charThreshold (sum of original_text length)
 // - Per chunk (IN PARALLEL): ask LLM for middle_summary + optional per-dialog summaries/soft_language
 // - Final reduce (PARALLEL TREE): consolidate all middle_summaries into final summary/soft_summary
 // - Batch over RawMeetingData (IN PARALLEL with bounded concurrency)
+// - RPS limiter: throttle LLM calls by requests-per-second + burst (token-bucket)
 
 import type {
   Article, Dialog, Keyword, MiddleSummary, Participant, SoftSummary, Summary, Term
@@ -19,6 +19,63 @@ import {
   materializeChunks,
   type IndexPack
 } from "./packing";
+
+// ---------------- Rate limiter (token-bucket) ----------------
+
+/** Sleep helper */
+const sleep = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
+
+/**
+ * Token-bucket RPS limiter.
+ * - `rps`: average refill rate (tokens per second)
+ * - `burst`: maximum bucket capacity (initial + ceiling)
+ * Call `acquire()` once per outgoing LLM request.
+ */
+class RpsLimiter {
+  private tokens: number;
+  private lastRefillMs: number;
+  private readonly refillPerMs: number;
+  private readonly capacity: number;
+
+  constructor(rps: number, burst?: number) {
+    const rate = Math.max(1, Math.floor(rps));
+    const cap = Math.max(1, Math.floor(burst ?? rate));
+    this.tokens = cap;
+    this.capacity = cap;
+    this.refillPerMs = rate / 1000;
+    this.lastRefillMs = Date.now();
+  }
+
+  /** Refill tokens based on elapsed time since last refill. */
+  private refill() {
+    const now = Date.now();
+    const elapsed = Math.max(0, now - this.lastRefillMs);
+    if (elapsed > 0) {
+      this.tokens = Math.min(this.capacity, this.tokens + elapsed * this.refillPerMs);
+      this.lastRefillMs = now;
+    }
+  }
+
+  /** Wait until a token is available, then consume 1 token. */
+  async acquire(): Promise<void> {
+    while (true) {
+      this.refill();
+      if (this.tokens >= 1) {
+        this.tokens -= 1;
+        return;
+      }
+      // Time until next token is available
+      const needed = 1 - this.tokens;
+      const waitMs = Math.ceil(needed / this.refillPerMs);
+      await sleep(Math.max(1, waitMs));
+    }
+  }
+}
+
+// Global limiter instance (tune via env vars)
+const LLM_RPS = Math.max(1, Number(process.env.LLM_RPS ?? 4));
+const LLM_BURST = Math.max(1, Number(process.env.LLM_BURST ?? LLM_RPS));
+export const llmLimiter = new RpsLimiter(LLM_RPS, LLM_BURST);
 
 // ---------------- Small utilities ----------------
 
@@ -319,7 +376,7 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-/** Reduce a single group of MiddleSummary[] → partial ReduceLLMResult via LLM. */
+/** Reduce a single group of MiddleSummary[] → partial ReduceLLMResult via LLM (RPS-limited). */
 async function reduceGroupToResult(params: {
   instruction: string;
   output_format: string;
@@ -335,10 +392,14 @@ async function reduceGroupToResult(params: {
     meta,
     middle_summaries: group
   });
+
+  // RPS gate before the LLM call
+  await llmLimiter.acquire();
+
   const { object } = await llm.generateObject<ReduceLLMResult>(
     messages,
     reduceSchema,
-    { temperature: 0.2, maxTokens: 2048, ...(llmOptions ?? {}) }
+    { temperature: 0.2, ...(llmOptions ?? {}) }
   );
   return object;
 }
@@ -354,7 +415,7 @@ function reduceResultToMiddleSummary(r: ReduceLLMResult): MiddleSummary {
 /**
  * Parallel, tree-structured reduction.
  * - Split into groups of size `groupSize`
- * - Reduce groups in parallel up to `concurrency`
+ * - Reduce groups in parallel up to `concurrency` (each call RPS-limited)
  * - Convert each partial result to a MiddleSummary
  * - Repeat until one final group remains and reduce it to the final result
  */
@@ -444,6 +505,7 @@ export async function processMeeting({
   llm: LLMClient;
   llmOptions?: GenerateOptions;
 }): Promise<Article> {
+  console.debug(`Processing meeting: ${raw.issueID} (${raw.nameOfMeeting})`);
   const meta = buildMeta(raw);
   const dialogs = buildDialogs(raw);
 
@@ -452,7 +514,7 @@ export async function processMeeting({
   const packs: IndexPack[] = packIndexSetsByGreedy(indexTable, charThreshold);
   const chunks: Dialog[][] = materializeChunks(packs, dialogs);
 
-  // Chunk-level LLM calls in PARALLEL (bounded)
+  // Chunk-level LLM calls in PARALLEL (bounded). Each call is also RPS-limited.
   const chunkConcurrency = Math.max(1, Number(process.env.LLM_CHUNK_CONCURRENCY ?? 4));
 
   type ChunkAggregate = {
@@ -478,10 +540,13 @@ export async function processMeeting({
         chunkCount: chunks.length
       });
 
+      // RPS gate before the LLM call
+      await llmLimiter.acquire();
+
       const { object: part } = await llm.generateObject<ChunkLLMResult>(
         messages,
         chunkSchema,
-        { temperature: 0.2, maxTokens: 2048, ...(llmOptions ?? {}) }
+        { temperature: 0.2, ...(llmOptions ?? {}) }
       );
 
       const mergedDialogs = mergeDialogSummaries(chunk, part.dialogs);
@@ -539,10 +604,7 @@ export async function processMeeting({
     .sort((a,b)=> b[1].score - a[1].score)
     .map(([keyword, _v], i) => {
       const priority: "high" | "medium" | "low" = i < 8 ? "high" : i < 20 ? "medium" : "low";
-      return {
-        keyword,
-        priority
-      };
+      return { keyword, priority };
     });
 
   const article: Article = {

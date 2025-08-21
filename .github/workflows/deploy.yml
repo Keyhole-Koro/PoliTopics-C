@@ -8,17 +8,17 @@ jobs:
   tf-apply:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write         # for OIDC
+      id-token: write
       contents: read
 
     env:
-      # App secrets -> Terraform variables
+      # llm config
       TF_VAR_GEMINI_MODEL_NAME: ${{ secrets.GEMINI_MODEL_NAME }}
       TF_VAR_gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-      TF_VAR_national_diet_api_endpoint: ${{ secrets.NATIONAL_DIET_API_ENDPOINT }}
-      TF_VAR_run_api_key: ${{ secrets.RUN_API_KEY }}
+      TF_VAR_char_threshold: ${{ secrets.CHAR_THRESHOLD }}
 
-      TF_VAR_char_threshhold: ${{ secrets.CHAR_THRESHHOLD }}
+      # this Lambda config
+      TF_VAR_run_api_key: ${{ secrets.RUN_API_KEY }}
 
       # Region
       TF_VAR_region: ap-northeast-3

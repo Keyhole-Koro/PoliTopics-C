@@ -1,27 +1,27 @@
+import fs from "fs-extra";
+import path from "node:path";
+
 import { Handler, ScheduledEvent } from 'aws-lambda';
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 
-import fetchNationalDietRecords from '@NationalDietAPIHandler/NationalDietAPIHandler';
-import { processRawMeetingData } from '@LLMSummarize/pipeline';
-import * as prompt from '@LLMSummarize/prompt';
-import { GeminiClient } from "@llm/geminiClient";
-import storeData from '@DynamoDBHandler/storeData';
-
-import { RawMeetingData, RawSpeechRecord } from '@interfaces/Raw';
-import { Article } from '@interfaces/Article';
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  DynamoDBDocumentClient
+} from "@aws-sdk/lib-dynamodb";
 
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import crypto from "node:crypto";
 import 'dotenv/config';
 
-/**
- * Read an environment variable (with optional fallback) or throw if missing.
- */
-function getEnvVar(name: string, fallback?: string): string {
-  const v = process.env[name] ?? fallback;
-  if (!v) throw new Error(`Missing required environment variable: ${name}`);
-  return v;
-}
+import fetchNationalDietRecords from '@NationalDietAPIHandler/NationalDietAPIHandler';
+import { GeminiClient } from "@llm/geminiClient";
+import * as prompt from '@LLMSummarize/prompt';
+import { processRawMeetingData } from '@LLMSummarize/pipeline';
+import storeData from '@DynamoDBHandler/storeData';
+
+import type { RawMeetingData } from '@interfaces/Raw';
+import type { Article } from '@interfaces/Article';
+
 
 // AWS SDK setup (supports LocalStack via AWS_ENDPOINT_URL)
 const region = process.env.AWS_REGION || "ap-northeast-3";
@@ -33,6 +33,16 @@ const llm = new GeminiClient({
   model: process.env.GEMINI_MODEL_NAME || "gemini-2.5-flash",
 });
 
+// DynamoDB setup
+const article_table_name = "politopics-article";
+const keyword_table_name = "politopics-keywords";
+const participant_table_name = "politopics-participants";
+
+const ddb = new DynamoDBClient({ region, ...(endpoint ? { endpoint } : {}) });
+const doc = DynamoDBDocumentClient.from(ddb);
+
+// National Diet API endpoint
+const national_diet_api_endpoint = "https://kokkai.ndl.go.jp/api/meeting"; 
 
 // ---- helpers ---------------------------------------------------
 
@@ -73,14 +83,32 @@ async function runWithConcurrency<T>(tasks: Array<() => Promise<T>>, limit: numb
   return results;
 }
 
-/**
- * Write a JSON log to S3 under success/ or error/.
- * No-op if ERROR_BUCKET is not configured.
- */
 async function logToS3(kind: "error" | "success", payload: any) {
+  const isLocal = (process.env.APP_ENV || "").toLowerCase() === "local";
+
+  // Build a Windows-safe timestamped file name
+  const tsSafe = new Date().toISOString().replace(/[:]/g, "-");
+  const fileName = `${tsSafe}-${crypto.randomUUID()}.json`;
+
+  if (isLocal) {
+    const outRoot = process.env.OUT_DIR || "out";
+    const dir = path.join(outRoot, kind);
+    const filePath = path.join(dir, fileName);
+
+    try {
+      await fs.ensureDir(dir);
+      await fs.writeJson(filePath, payload, { spaces: 2 });
+      console.error(`[LOG] Wrote ${kind} log to ${filePath}`);
+    } catch (e) {
+      console.error(`[LOG] Failed to write local ${kind} log:`, e);
+    }
+    return; // IMPORTANT: do not attempt S3 in local mode
+  }
+
   const bucket = process.env.ERROR_BUCKET;
   if (!bucket) return;
-  const key = `${kind}/${new Date().toISOString()}-${crypto.randomUUID()}.json`;
+
+  const key = `${kind}/${fileName}`;
   try {
     await s3.send(
       new PutObjectCommand({
@@ -95,7 +123,6 @@ async function logToS3(kind: "error" | "success", payload: any) {
     console.error(`[LOG] Failed to write ${kind} log to S3:`, e);
   }
 }
-
 /**
  * Return YYYY-MM-DD string in JST with an optional day offset.
  * Example: dateStrJST(0) -> today (JST), dateStrJST(-1) -> previous day (JST).
@@ -153,23 +180,6 @@ const parseYmdOrNull = (v?: unknown): string | null => {
   return Number.isNaN(d.getTime()) ? null : s;
 };
 
-// ---------- Insert original speech text into Article dialogs --------
-function insertOriginalText(article: Article, speeches: RawSpeechRecord[]): void {
-  if (!article?.dialogs?.length || !speeches?.length) return;
-
-  const speechMap = new Map<number, string>(
-    speeches.map(s => [s.speechOrder, s.speech])
-  );
-
-  for (const dialog of article.dialogs) {
-    const original = speechMap.get(dialog.order);
-    if (original !== undefined) {
-      dialog.original_text = original;
-    }
-  }
-}
-
-
 // ---------- core pipeline (shared by HTTP / EventBridge) --------
 
 type PipelinePayload = {
@@ -193,9 +203,7 @@ async function executePipeline(
   runId: string,
   startedAt: string
 ): Promise<PipelinePayload | { message: string; runId: string; filters: { from: string; until: string } }> {
-  const API_ENDPOINT = getEnvVar("NATIONAL_DIET_API_ENDPOINT");
-
-  const raw: RawMeetingData = await fetchNationalDietRecords(API_ENDPOINT, { from: fromYmd, until: untilYmd });
+  const raw: RawMeetingData = await fetchNationalDietRecords(national_diet_api_endpoint, { from: fromYmd, until: untilYmd });
 
   if (Object.prototype.hasOwnProperty.call(raw, "numberOfRecords") && raw.numberOfRecords === 0) {
     const payload = {
@@ -226,7 +234,14 @@ async function executePipeline(
   const tasks: Array<() => Promise<TaskResult>> = articles.map((article) => async () => {
     const baseId = article.id;
     try {
-      const stored = await storeData(article);
+      const stored = await storeData(
+        {
+          doc: doc,
+          article_table_name: article_table_name,
+          keyword_table_name: keyword_table_name,
+          participant_table_name: participant_table_name,
+        },
+        article);
       const articleId =
         typeof stored === "string"
           ? stored

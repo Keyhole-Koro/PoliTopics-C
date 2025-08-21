@@ -59,7 +59,6 @@ export function packIndexSetsByGreedy(orderLenList: OrderLen[], charThreshold: n
     cur.totalLen += len;
   }
   pushCur();
-  console.log(packs);
   return packs;
 }
 

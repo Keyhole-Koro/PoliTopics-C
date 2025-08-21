@@ -14,7 +14,8 @@ import type { ScheduledEvent } from 'aws-lambda';
 
   // Date range (JST). FROM=since, UNTIL=until
   process.env.FROM_DATE = process.env.FROM_DATE || '2025-06-01';
-  process.env.UNTIL_DATE = process.env.UNTIL_DATE || '2025-06-30'; // ← 修正
+  process.env.UNTIL_DATE = process.env.UNTIL_DATE || '2025-06-30';
+  process.env.APP_ENV = process.env.APP_ENV || 'local';
 
   // Please set your real API and key in .env for full run:
   // process.env.NATIONAL_DIET_API_ENDPOINT = "...";

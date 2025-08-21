@@ -1,4 +1,3 @@
-// src/llm/geminiClient.ts
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { LLMClient, Message, GenerateOptions, GenerateResult, LLMUsage } from "./LLMClient";
 

@@ -1,4 +1,3 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
   PutCommand,
@@ -6,15 +5,6 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import { Article } from "@interfaces/Article";
 
-const region = process.env.AWS_REGION || "ap-northeast-3";
-const endpoint = process.env.AWS_ENDPOINT_URL;
-
-const ARTICLE_TABLE = process.env.ARTICLE_TABLE_NAME || "politopics-article";
-const KEYWORD_TABLE = process.env.KEYWORD_TABLE_NAME || "politopics-keywords";
-const PARTICIPANT_TABLE = process.env.PARTICIPANT_TABLE_NAME || "politopics-participants";
-
-const ddb = new DynamoDBClient({ region, ...(endpoint ? { endpoint } : {}) });
-const doc = DynamoDBDocumentClient.from(ddb);
 
 interface ArticleWithMonth extends Article {
   month?: string; // optional string for GSI
@@ -33,7 +23,14 @@ function deriveMonth(dateStr: string): string {
   return dateStr.slice(0, 7);
 }
 
-export default async function storeData(article: ArticleWithMonth) {
+export default async function storeData(
+  config: {
+    doc: DynamoDBDocumentClient,
+    article_table_name: string;
+    keyword_table_name: string;
+    participant_table_name: string;
+   },
+  article: ArticleWithMonth): Promise<{ ok: boolean; id: string }> {
   // Ensure `date` is present and normalized
   if (!article.date) {
     throw new Error("Article.date is required for MonthDateIndex.");
@@ -57,8 +54,8 @@ export default async function storeData(article: ArticleWithMonth) {
   };
 
   // Insert/overwrite the article in the main table
-  await doc.send(new PutCommand({
-    TableName: ARTICLE_TABLE,
+  await config.doc.send(new PutCommand({
+    TableName: config.article_table_name,
     Item: itemToPut,
   }));
 
@@ -83,12 +80,12 @@ export default async function storeData(article: ArticleWithMonth) {
 
     const kwItems = chunk.filter((x) => "keyword" in x.PutRequest.Item);
     if (kwItems.length) {
-      await doc.send(new BatchWriteCommand({ RequestItems: { [KEYWORD_TABLE]: kwItems } }));
+      await config.doc.send(new BatchWriteCommand({ RequestItems: { [config.keyword_table_name]: kwItems } }));
     }
 
     const ptItems = chunk.filter((x) => "participant" in x.PutRequest.Item);
     if (ptItems.length) {
-      await doc.send(new BatchWriteCommand({ RequestItems: { [PARTICIPANT_TABLE]: ptItems } }));
+      await config.doc.send(new BatchWriteCommand({ RequestItems: { [config.participant_table_name]: ptItems } }));
     }
   }
 

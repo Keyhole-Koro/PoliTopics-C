@@ -16,3 +16,6 @@ src/*.json
 
 .terraform
 .terraform.lock.hcl
+
+# contains logs instead of s3 in local development
+out
