@@ -54,3 +54,9 @@ variable "run_api_key" {
   sensitive   = true
   description = "API key for POST /run (validated against x-api-key header)"
 }
+
+variable "char_threshhold" {
+  description = "Character threshold for LLM processing"
+  type        = number
+  default     = 10000
+}

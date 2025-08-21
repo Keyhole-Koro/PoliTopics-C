@@ -17,6 +17,7 @@
       "@DynamoDBHandler/*": ["DynamoDBHandler/*"],
       "@LLMSummarize/*": ["LLMSummarize/*"],
       "@NationalDietAPIHandler/*": ["NationalDietAPIHandler/*"],
+      "@llm/*": ["llm/*"],
       "@services/*": ["services/*"],
       "@utils/*": ["utils/*"]
     },

@@ -1,10 +1,8 @@
-type markdown = string;
-
 export interface Article {
   id: string;
   title: string;
   date: string;
-  imageKind: string;
+  imageKind: "会議録" | "目次" | "索引" | "附録" | "追録";
   session: number;
   nameOfHouse: string;
   nameOfMeeting: string;
@@ -21,20 +19,18 @@ export interface Article {
 }
 
 export interface Summary {
-  id: number;
+  based_on_orders: number[];
   summary: string;
-  figure: markdown;
 }
 
 export interface SoftSummary {
-  id: number;
+  based_on_orders: number[];
   summary: string;
 }
 
 export interface MiddleSummary {
-  order: number;
+  based_on_orders: number[];
   summary: string;
-  figure: markdown;
 }
 
 export interface Participant {
@@ -60,13 +56,7 @@ export interface Dialog {
   speaker_role: string;
   original_text: string;
   summary: string;
-  soft_summary: string;
-  response_to: ResponseTo[];
-}
-
-export interface ResponseTo {
-  dialog_id: number;
-  reaction: Reaction;
+  soft_language: string;
 }
 
 export enum Reaction {

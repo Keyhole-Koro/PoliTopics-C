@@ -1,51 +1,59 @@
-export const instruction = `以下の会話内容をもとに、次の形式で要約データを構成してください:
+export const instruction = `【目的】
+国会議事録をAIで要約し、一般の読者にもわかりやすく説明すること。専門用語や制度に不慣れな人でも「何が決まり、何が議論され、次に何が起こるか」が直感的に掴める要約データを作成してください。
 
-各セクションとフィールドの**使用目的**を理解した上で、忠実に出力してください。  
+各セクションとフィールドの**使用目的**を理解した上で、忠実に出力してください。
 この構造は、人間が読むレポートとしてだけでなく、システムが発言と要約を対応付けて処理できるように設計されています。
 
----
+--- 
 
-1. **基本情報 (Metadata)**  
- 会議に関するメタデータを記載してください:タイトル、開催日、開催機関、カテゴリなど。  
+1. **基本情報 (Metadata)**
+ 会議に関するメタデータを記載してください：タイトル、開催日、開催機関、カテゴリなど。
+ - タイトルは「要点がひと目で分かる見出し型」。例：\`補助金の審査厳格化を政府が表明、来月までに新基準案\`
+ - 組織名・会の種類はメタデータで保持し、descriptionでは優先度を下げる
 
-2. **全体の要約 (Summary)**  
- 会議全体の要点や結論を簡潔にまとめてください。  
- - \`based_on_orders\`: この要約がどの dialogs.order をまとめているかを配列で示す (例:[1,2,3])。  
- - \`summary\`: 会話全体の要点。  
- - \`figure\`: 補足的な図解 (任意)。  
+2. **全体の要約 (Summary)**
+ 会議全体の要点や結論を簡潔にまとめてください。箇条書き中心で、数値や件数はMarkdownの表・リストの利用を推奨（任意）。
+ - \`based_on_orders\`: この要約がどの dialogs.order をまとめているかを配列で示す (例:[1,2,3])
+ - \`summary\`: 会話全体の要点（必要に応じてMarkdown可。例：箇条書き、簡易テーブル）
 
-3. **やさしい要約 (SoftSummary)**  
- 政治や専門用語に馴染みのない読者向けに、背景や文脈も含めてわかりやすく丁寧に説明してください。  
- - \`based_on_orders\`: 対象となる dialogs.order の配列。  
- - \`summary\`: わかりやすく言い換えた文章。  
+3. **やさしい要約 (SoftSummary)**
+ 政治や専門用語に馴染みのない読者向けに、背景や文脈も含めてわかりやすく丁寧に説明してください。
+ - \`based_on_orders\`: 対象となる dialogs.order の配列
+ - \`summary\`: やさしい言葉での説明（Markdown可）
 
-4. **中間要約 (MiddleSummary)**  
- 議論の重要な転換点や話題ごとのまとまりを要約してください。構成順に並べてください。  
- - \`based_on_orders\`: どの dialogs.order に基づくか。  
- - \`summary\`: 中間的なまとめ。  
- - \`figure\`: 図や補足 (任意)。  
+4. **中間要約 (MiddleSummary)**
+ 議論の重要な転換点や話題ごとのまとまりを、構成順に並べて要約してください。
+ - \`based_on_orders\`: どの dialogs.order に基づくか
+ - \`summary\`: 中間的なまとめ（必要に応じてMarkdown可）
 
-5. **発言ごとの要約 (Dialogs)**  
- 各発言について、以下の情報を含めて記述してください:  
- - \`order\`: 発言番号。  
- - \`speaker\`: 発言者名。  
- - \`speaker_group\`: 所属。  
- - \`speaker_position\`: 役職。  
- - \`speaker_role\`: 役割 (質問者、答弁者など)。  
- - \`summary\`: 発言の主旨を簡潔に要約。  
- - \`soft_summary\`: 一般読者にも伝わるように、やさしく丁寧に言い換えた文章。  
- - \`response_to\`: この発言がどの発言に反応しているか (例:質問、賛同、反論など)。  
+5. **発言ごとの要約 (Dialogs)**
+ 各発言について、以下の情報を含めて記述してください：
+ - \`order\`: 発言番号
+ - \`speaker\`: 発言者名
+ - \`speaker_group\`: 所属
+ - \`speaker_position\`: 役職
+ - \`speaker_role\`: 役割 (質問者、答弁者など)
+ - \`summary\`: 発言の主旨を簡潔に要約
+ - \`soft_language\`: 一般読者にも伝わるように、やさしく丁寧に言い換えた文章
+ - \`response_to\`: この発言がどの発言に反応しているか (例:質問、賛同、反論など)
 
-6. **参加者情報 (Participants)**  
- 主な話者ごとに、名前・役職・発言内容の要旨をまとめてください。  
+6. **参加者情報 (Participants)**
+ 主な話者ごとに、名前・役職・発言内容の要旨をまとめてください。
 
-7. **用語の解説 (Terms)**  
- 専門的または一般にはわかりにくい用語について、簡潔で明確な定義を記述してください。文脈に即した説明が望ましいです。  
+7. **用語の解説 (Terms)**
+ 専門的または一般にはわかりにくい用語について、簡潔で明確な定義を記述してください。文脈に即した説明が望ましいです。
 
-8. **キーワード抽出 (Keywords)**  
- 議論の焦点となる用語やトピックを抽出し、重要度 (high / medium / low)を分類してください。  
+8. **キーワード抽出 (Keywords)**
+ 検索しやすさを意識して、議論の焦点となる用語やトピックを抽出し、重要度 (high / medium / low) を分類してください。
+ - 正規化（表記ゆれを代表表記に統一）、一般的に検索される語を優先
+ - 不要な固有名詞の羅列を避け、テーマ・政策名・制度名・論点を中心に
+ - カタカナ語は必要に応じて日本語同義語の代表表記を採用
 
----
+--- 
+
+**記述スタイルのヒント**
+- descriptionは「パッと見で要点が伝わる」短文（1〜2文）＋必要なら箇条書き3〜5点を推奨。誰が主宰したかよりも、「何が決まった／何を検討中／次のアクション」を前面に。
+- 図表は挿入せず、必要な表現は各 \`summary\` 内にMarkdownとして記述（任意）。数値比較は簡易テーブルが有効。
 `;
 
 export const output_format = `### 出力フォーマット
@@ -54,29 +62,27 @@ export const output_format = `### 出力フォーマット
 
 {
   "id": "文字列 (議事録ID)",
-  "title": "会議のタイトル",
+  "title": "要点がひと目で分かる見出し",
   "date": "開催日 (YYYY-MM-DD)",
-  "imageKind": "画像分類 (例: graph, diagram, etc.)",
+  "imageKind": "イメージ種別（会議録 | 目次 | 索引 | 附録 | 追録）",
   "session": 数字 (例: 208),
   "nameOfHouse": "衆議院または参議院",
   "nameOfMeeting": "会議名 (例: 国土交通委員会)",
   "category": "カテゴリ (例: 環境, 教育, etc.)",
-  "description": "この会議についての説明",
+  "description": "パッと見で要点が分かる説明（1〜2文＋必要に応じてMarkdownの箇条書き・簡易表を含んでもよい）",
 
   "summary": {
     "based_on_orders": [1,2,3],
-    "summary": "会話全体の要約をここに記載",
-    "figure": "Markdown形式で図や補足を記載 (任意)"
+    "summary": "会話全体の要点（Markdown可：箇条書き、簡易テーブルなど）"
   },
   "soft_summary": {
     "based_on_orders": [1,2,3],
-    "summary": "政治に詳しくない人でも分かるように、丁寧でわかりやすく説明した要約"
+    "summary": "政治に詳しくない人でも分かるように、丁寧でわかりやすく説明した要約（Markdown可）"
   },
   "middle_summary": [
     {
       "based_on_orders": [4,5],
-      "summary": "中間要約1",
-      "figure": "Markdown形式 (任意)"
+      "summary": "中間要約（Markdown可）"
     }
   ],
   "dialogs": [
@@ -87,7 +93,7 @@ export const output_format = `### 出力フォーマット
       "speaker_position": "役職",
       "speaker_role": "役割",
       "summary": "発言内容の要約",
-      "soft_summary": "発言をやさしく丁寧に言い換えた内容",
+      "soft_language": "発言をやさしく丁寧に言い換えた内容",
       "response_to": [
         {
           "order": 0,
@@ -110,7 +116,7 @@ export const output_format = `### 出力フォーマット
   ],
   "keywords": [
     {
-      "keyword": "キーワード",
+      "keyword": "検索性を意識したキーワード（代表表記）",
       "priority": "high | medium | low"
     }
   ]
@@ -118,5 +124,5 @@ export const output_format = `### 出力フォーマット
 `;
 
 export const compose_prompt = (content: string): string => {
-  return `${instruction}\n${output_format}\n${content}`;
+  return `${instruction}\n${output_format}\n###　入力\n${content}`;
 };

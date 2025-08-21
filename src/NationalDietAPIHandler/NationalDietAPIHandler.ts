@@ -1,4 +1,4 @@
-import { RawMeetingData } from './RawData';
+import { RawMeetingData } from '@interfaces/Raw';
 
 export interface FetchParams {
     from?: string;

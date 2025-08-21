@@ -5,6 +5,7 @@ module.exports = {
     '^@DynamoDBHandler/(.*)$': '<rootDir>/src/DynamoDBHandler/$1',
     '^@LLMSummarize/(.*)$': '<rootDir>/src/LLMSummarize/$1',
     '^@NationalDietAPIHandler/(.*)$': '<rootDir>/src/NationalDietAPIHandler/$1',
+    '^@llm/(.*)$': '<rootDir>/src/llm/$1',
     '^@services/(.*)$': '<rootDir>/src/services/$1',
     '^@interfaces/(.*)$': '<rootDir>/src/interfaces/$1',
   },

@@ -2,11 +2,12 @@ import { Handler, ScheduledEvent } from 'aws-lambda';
 import type { APIGatewayProxyEventV2, APIGatewayProxyStructuredResultV2 } from 'aws-lambda';
 
 import fetchNationalDietRecords from '@NationalDietAPIHandler/NationalDietAPIHandler';
-import LLMSummarize from '@LLMSummarize/LLMSummarize';
+import { processRawMeetingData } from '@LLMSummarize/pipeline';
+import * as prompt from '@LLMSummarize/prompt';
+import { GeminiClient } from "@llm/geminiClient";
 import storeData from '@DynamoDBHandler/storeData';
 
-import { RawMeetingData, RawSpeechRecord } from '@NationalDietAPIHandler/RawData';
-import { gatherSpeechesById } from '@NationalDietAPIHandler/formatRecord';
+import { RawMeetingData, RawSpeechRecord } from '@interfaces/Raw';
 import { Article } from '@interfaces/Article';
 
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
@@ -27,7 +28,11 @@ const region = process.env.AWS_REGION || "ap-northeast-3";
 const endpoint = process.env.AWS_ENDPOINT_URL;
 const s3 = new S3Client({ region, ...(endpoint ? { endpoint } : {}) });
 
-const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL_NAME || "gemini-2.5-flash";
+const llm = new GeminiClient({
+  apiKey: process.env.GEMINI_API_KEY!,
+  model: process.env.GEMINI_MODEL_NAME || "gemini-2.5-flash",
+});
+
 
 // ---- helpers ---------------------------------------------------
 
@@ -189,9 +194,7 @@ async function executePipeline(
   startedAt: string
 ): Promise<PipelinePayload | { message: string; runId: string; filters: { from: string; until: string } }> {
   const API_ENDPOINT = getEnvVar("NATIONAL_DIET_API_ENDPOINT");
-  const GEMINI_API_KEY = getEnvVar("GEMINI_API_KEY");
 
-  // 1) Fetch
   const raw: RawMeetingData = await fetchNationalDietRecords(API_ENDPOINT, { from: fromYmd, until: untilYmd });
 
   if (Object.prototype.hasOwnProperty.call(raw, "numberOfRecords") && raw.numberOfRecords === 0) {
@@ -200,45 +203,44 @@ async function executePipeline(
       runId,
       filters: { from: fromYmd, until: untilYmd },
     };
-    // Optional: you can still log "success" with zero records
     await logToS3("success", {
       runId, startedAt, finishedAt: new Date().toISOString(),
       groups: 0, stored: 0, failed: 0, storedIds: [],
-      raw: raw,
-      failures: [], filters: { from: fromYmd, until: untilYmd },
+      raw, failures: [], filters: { from: fromYmd, until: untilYmd },
       eventSource, concurrency: CONCURRENCY
     });
     return payload;
   }
 
-  // 2) Group speeches by baseId
-  const mapById = gatherSpeechesById(raw as RawMeetingData);
-  const entries = Object.entries(mapById as Record<string, { meetingInfo: any; speeches: any }>);
-
-  // 3) Parallel summarize + store
-  const tasks: Array<() => Promise<TaskResult>> = entries.map(([baseId, bundle]) => {
-    return async () => {
-      const mappedIssue = { baseId, meetingInfo: bundle.meetingInfo, speeches: bundle.speeches };
-      try {
-        console.log(`[${runId}] -> ${baseId} summarizing...`);
-        const article: Article = await LLMSummarize(GEMINI_MODEL_NAME, mappedIssue, GEMINI_API_KEY);
-
-        insertOriginalText(article, bundle.speeches);
-
-        console.log(`[${runId}] -> ${baseId} storing... id=${article?.id}`);
-        await storeData(article);
-
-        console.log(`[${runId}] -> ${baseId} done.`);
-        return { ok: true, baseId, articleId: article?.id } as TaskOk;
-      } catch (e) {
-        const err = serializeError(e);
-        console.error(`[${runId}] !! ${baseId} failed: ${err.message}`);
-        return { ok: false, baseId, error: err } as TaskNg;
-      }
-    };
+  // === build articles with LLM (threshold-aware) ===
+  const charThreshold = Number(process.env.CHAR_THRESHOLD || 10000);
+  const articles: Article[] = await processRawMeetingData({
+    rawData: raw,
+    instruction: prompt.instruction,
+    output_format: prompt.output_format,
+    charThreshold,
+    llm
   });
 
-  const results = await runWithConcurrency(tasks, CONCURRENCY);
+  // === parallel: store each article to DynamoDB with bounded concurrency ===
+  const tasks: Array<() => Promise<TaskResult>> = articles.map((article) => async () => {
+    const baseId = article.id;
+    try {
+      const stored = await storeData(article);
+      const articleId =
+        typeof stored === "string"
+          ? stored
+          : (stored?.id ?? baseId);
+
+      return { ok: true, baseId, articleId };
+    } catch (e) {
+      const err = serializeError(e);
+      await logToS3("error", { runId, stage: "storeData", articleId: baseId, error: err });
+      return { ok: false, baseId, error: err };
+    }
+  });
+
+  const results = await runWithConcurrency<TaskResult>(tasks, CONCURRENCY);
   const ok = results.filter(r => r.ok) as TaskOk[];
   const ng = results.filter(r => !r.ok) as TaskNg[];
 
@@ -249,7 +251,7 @@ async function executePipeline(
     runId,
     startedAt,
     finishedAt,
-    groups: entries.length,
+    groups: articles.length,
     stored: ok.length,
     failed: ng.length,
     storedIds,
