@@ -148,7 +148,7 @@ function buildMeta(raw: RawMeetingRecord): Required<Pick<Article, "id"|"title"|"
 const chunkSchema = {
   type: "object",
   properties: {
-    category: "string",
+    category: { type: "string" },
     dialogs: {
       type: "array",
       items: {
@@ -204,7 +204,7 @@ const chunkSchema = {
 const reduceSchema = {
   type: "object",
   properties: {
-    category: "string",
+    category: { type: "string" },
     summary: {
       type: "object",
       properties: {
