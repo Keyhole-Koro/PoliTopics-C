@@ -2,6 +2,7 @@ export interface Article {
   id: string;
   title: string;
   date: string;
+  month: string;
   imageKind: "会議録" | "目次" | "索引" | "附録" | "追録";
   session: number;
   nameOfHouse: string;

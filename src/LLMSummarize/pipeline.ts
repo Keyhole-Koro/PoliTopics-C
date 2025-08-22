@@ -148,6 +148,7 @@ function buildMeta(raw: RawMeetingRecord): Required<Pick<Article, "id"|"title"|"
 const chunkSchema = {
   type: "object",
   properties: {
+    category: "string",
     dialogs: {
       type: "array",
       items: {
@@ -203,6 +204,7 @@ const chunkSchema = {
 const reduceSchema = {
   type: "object",
   properties: {
+    category: "string",
     summary: {
       type: "object",
       properties: {
@@ -471,6 +473,7 @@ async function reduceMiddleSummaries(params: {
 // ---------------- Public types ----------------
 
 export interface ChunkLLMResult {
+  category: string;
   dialogs?: Array<Pick<Dialog, "order" | "summary" | "soft_language">>;
   middle_summary: MiddleSummary;
   terms?: Term[];
@@ -519,6 +522,7 @@ export async function processMeeting({
 
   type ChunkAggregate = {
     idx: number;
+    category: string;
     dialogs: Dialog[];            // merged per-dialog updates
     middle: MiddleSummary;        // required
     participants?: Participant[];
@@ -552,6 +556,7 @@ export async function processMeeting({
       const mergedDialogs = mergeDialogSummaries(chunk, part.dialogs);
       return {
         idx: i,
+        category: part.category,
         dialogs: mergedDialogs,
         middle: part.middle_summary,
         participants: part.participants,
@@ -568,6 +573,7 @@ export async function processMeeting({
   const participantsMap = new Map<string, string>();
   const termsMap = new Map<string, string>();
   const keywordScore = new Map<string, { score: number; priority: "high"|"medium"|"low" }>();
+  const categoryCount = new Map<string, number>();
 
   for (const r of chunkResults.sort((a,b)=>a.idx-b.idx)) {
     allDialogs.push(...r.dialogs);
@@ -584,6 +590,18 @@ export async function processMeeting({
       const base = k.priority === "high" ? 3 : k.priority === "medium" ? 2 : 1;
       const cur = keywordScore.get(k.keyword);
       keywordScore.set(k.keyword, { score: (cur?.score ?? 0) + base, priority: k.priority });
+    }
+
+    if (r.category) {
+      categoryCount.set(r.category, (categoryCount.get(r.category) ?? 0) + 1);
+    }
+  }
+
+  let votedCategory: string | undefined;
+  {
+    let max = -1;
+    for (const [cat, cnt] of categoryCount.entries()) {
+      if (cnt > max) { max = cnt; votedCategory = cat; }
     }
   }
 
@@ -611,6 +629,8 @@ export async function processMeeting({
     ...meta,
     title: reduced.title ?? meta.title,
     description: reduced.description ?? meta.description,
+    month: meta.date.slice(0, 7), // YYYY-MM format
+    category: votedCategory ?? "",
     dialogs: allDialogs,
     middle_summary: allMiddle,
     summary: reduced.summary,
