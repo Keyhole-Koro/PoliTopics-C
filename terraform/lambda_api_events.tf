@@ -137,9 +137,17 @@ resource "aws_lambda_function" "handler" {
       NATIONAL_DIET_API_ENDPOINT = var.national_diet_api_endpoint
       RUN_API_KEY                = var.run_api_key
 
+      # LLM configuration
+      GEMINI_MODEL_NAME          = var.gemini_model_name
+      CHAR_THRESHHOLD           = var.char_threshhold
+      GEMINI_BURST_LIMIT         = var.llm_burst
+      LLM_CHUNK_CONCURRENCY      = var.llm_chunk_concurrency
+      LLM_RPS                    = var.llm_rps
+      LLM_REDUCE_CONCURRENCY     = var.llm_reduce_concurrency
+
       # Optional date filters
-      FROM_DATE  = var.from_date
-      UNTIL_DATE = var.until_date
+      FROM_DATE                  = var.from_date
+      UNTIL_DATE                 = var.until_date
     }
   }
 
