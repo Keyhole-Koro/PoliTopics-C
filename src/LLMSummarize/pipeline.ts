@@ -1,8 +1,7 @@
-// Summarization pipeline that NEVER cuts dialog.original_text.
 // - Build Dialog[] from RawMeetingRecord (order by speechID part / speechOrder)
 // - Pack dialogs greedily by charThreshold (sum of original_text length)
 // - Per chunk (IN PARALLEL): ask LLM for middle_summary + optional per-dialog summaries/soft_language
-// - Final reduce (PARALLEL TREE): consolidate all middle_summaries into final summary/soft_summary
+// - Final reduce (PARALLEL TREE): consolidate all middle_summaries into final title/summary/soft_summary/categories
 // - Batch over RawMeetingData (IN PARALLEL with bounded concurrency)
 // - RPS limiter: throttle LLM calls by requests-per-second + burst (token-bucket)
 
@@ -12,7 +11,7 @@ import type {
 import type { RawMeetingData, RawMeetingRecord, RawSpeechRecord } from "@interfaces/Raw";
 import type { LLMClient, Message, GenerateOptions } from "@llm/LLMClient";
 
-// Greedy packer (no cutting)
+import { chunkSchema, reduceSchema } from "./schema";
 import {
   buildOrderLen,
   packIndexSetsByGreedy,
@@ -22,15 +21,8 @@ import {
 
 // ---------------- Rate limiter (token-bucket) ----------------
 
-/** Sleep helper */
 const sleep = (ms: number) => new Promise<void>(res => setTimeout(res, ms));
 
-/**
- * Token-bucket RPS limiter.
- * - `rps`: average refill rate (tokens per second)
- * - `burst`: maximum bucket capacity (initial + ceiling)
- * Call `acquire()` once per outgoing LLM request.
- */
 class RpsLimiter {
   private tokens: number;
   private lastRefillMs: number;
@@ -45,8 +37,6 @@ class RpsLimiter {
     this.refillPerMs = rate / 1000;
     this.lastRefillMs = Date.now();
   }
-
-  /** Refill tokens based on elapsed time since last refill. */
   private refill() {
     const now = Date.now();
     const elapsed = Math.max(0, now - this.lastRefillMs);
@@ -55,8 +45,6 @@ class RpsLimiter {
       this.lastRefillMs = now;
     }
   }
-
-  /** Wait until a token is available, then consume 1 token. */
   async acquire(): Promise<void> {
     while (true) {
       this.refill();
@@ -64,7 +52,6 @@ class RpsLimiter {
         this.tokens -= 1;
         return;
       }
-      // Time until next token is available
       const needed = 1 - this.tokens;
       const waitMs = Math.ceil(needed / this.refillPerMs);
       await sleep(Math.max(1, waitMs));
@@ -72,14 +59,12 @@ class RpsLimiter {
   }
 }
 
-// Global limiter instance (tune via env vars)
 const LLM_RPS = Math.max(1, Number(process.env.LLM_RPS ?? 4));
 const LLM_BURST = Math.max(1, Number(process.env.LLM_BURST ?? LLM_RPS));
 export const llmLimiter = new RpsLimiter(LLM_RPS, LLM_BURST);
 
-// ---------------- Small utilities ----------------
+// ---------------- Utilities ----------------
 
-/** Extract numeric order from speechID.split("_")[1], fallback to speechOrder, fallback to idx+1. */
 function getSpeechNumericOrder(s: RawSpeechRecord, idx: number): number {
   const idPart = s.speechID?.split("_")[1];
   const byId = idPart ? Number(idPart) : NaN;
@@ -88,7 +73,6 @@ function getSpeechNumericOrder(s: RawSpeechRecord, idx: number): number {
   return idx + 1;
 }
 
-/** Sort speeches by numeric order derived from ID (primary) then speechOrder. */
 function sortSpeeches(raw: RawMeetingRecord): RawSpeechRecord[] {
   return [...raw.speechRecord].sort((a, b) => {
     const ao = getSpeechNumericOrder(a, 0);
@@ -97,10 +81,9 @@ function sortSpeeches(raw: RawMeetingRecord): RawSpeechRecord[] {
   });
 }
 
-/** Convert one RawSpeechRecord into a Dialog WITHOUT any splitting. */
 function toDialog(s: RawSpeechRecord, order: number): Dialog {
   return {
-    order, // unique per speech (as provided)
+    order,
     speaker: s.speaker ?? "",
     speaker_group: s.speakerGroup ?? "",
     speaker_position: s.speakerPosition ?? "",
@@ -111,7 +94,6 @@ function toDialog(s: RawSpeechRecord, order: number): Dialog {
   };
 }
 
-/** Build Dialog[] for a meeting (no splitting). */
 function buildDialogs(raw: RawMeetingRecord): Dialog[] {
   const speeches = sortSpeeches(raw);
   const dialogs: Dialog[] = [];
@@ -123,124 +105,23 @@ function buildDialogs(raw: RawMeetingRecord): Dialog[] {
   return dialogs;
 }
 
-/** Build meta (title/description are placeholders; often refined by LLM). */
-function buildMeta(raw: RawMeetingRecord): Required<Pick<Article, "id"|"title"|"date"|"imageKind"|"session"|"nameOfHouse"|"nameOfMeeting"|"category"|"description">> {
+function buildMeta(raw: RawMeetingRecord): Required<Pick<Article,
+  "id"|"date"|"month"|"imageKind"|"session"|"nameOfHouse"|"nameOfMeeting">> {
   const allowed = new Set(["会議録","目次","索引","附録","追録"]);
   const imageKind = allowed.has(raw.imageKind) ? (raw.imageKind as Article["imageKind"]) : "会議録";
-  const title = raw.issue || `${raw.nameOfMeeting}（${raw.date}）`;
-  const description = "This article summarizes the meeting in easy-to-understand language for general readers.";
   return {
     id: raw.issueID,
-    title,
     date: raw.date,
+    month: raw.date.slice(0, 7), // YYYY-MM
     imageKind,
     session: raw.session,
     nameOfHouse: raw.nameOfHouse,
-    nameOfMeeting: raw.nameOfMeeting,
-    category: "",
-    description
+    nameOfMeeting: raw.nameOfMeeting
   };
 }
 
-// ---------------- JSON Schemas (Gemini-friendly) ----------------
-// No additionalProperties anywhere; integer fields use "integer".
+// ---------------- Prompt builders ----------------
 
-const chunkSchema = {
-  type: "object",
-  properties: {
-    category: { type: "string" },
-    dialogs: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          order: { type: "integer" },
-          summary: { type: "string" },
-          soft_language: { type: "string" }
-        },
-        required: ["order"]
-      }
-    },
-    middle_summary: {
-      type: "object",
-      properties: {
-        based_on_orders: { type: "array", items: { type: "integer" } },
-        summary: { type: "string" }
-      },
-      required: ["based_on_orders", "summary"]
-    },
-    terms: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: { term: { type: "string" }, definition: { type: "string" } },
-        required: ["term", "definition"]
-      }
-    },
-    keywords: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          keyword: { type: "string" },
-          priority: { type: "string", enum: ["high","medium","low"] }
-        },
-        required: ["keyword", "priority"]
-      }
-    },
-    participants: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: { name: { type: "string" }, summary: { type: "string" } },
-        required: ["name", "summary"]
-      }
-    },
-    outline: { type: "array", items: { type: "string" } }
-  },
-  required: ["middle_summary"]
-} as const;
-
-const reduceSchema = {
-  type: "object",
-  properties: {
-    category: { type: "string" },
-    summary: {
-      type: "object",
-      properties: {
-        based_on_orders: { type: "array", items: { type: "integer" } },
-        summary: { type: "string" }
-      },
-      required: ["based_on_orders", "summary"]
-    },
-    soft_summary: {
-      type: "object",
-      properties: {
-        based_on_orders: { type: "array", items: { type: "integer" } },
-        summary: { type: "string" }
-      },
-      required: ["based_on_orders", "summary"]
-    },
-    title: { type: "string" },
-    description: { type: "string" },
-    keywords: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          keyword: { type: "string" },
-          priority: { type: "string", enum: ["high","medium","low"] }
-        },
-        required: ["keyword", "priority"]
-      }
-    }
-  },
-  required: ["summary", "soft_summary"]
-} as const;
-
-// ---------------- LLM prompt builders ----------------
-
-/** Merge generated dialog summaries into the original chunk by order. */
 function mergeDialogSummaries(original: Dialog[], updates?: Array<Pick<Dialog,"order"|"summary"|"soft_language">>): Dialog[] {
   if (!updates?.length) return original;
   const byOrder = new Map<number, Dialog>(original.map(d => [d.order, d]));
@@ -253,7 +134,6 @@ function mergeDialogSummaries(original: Dialog[], updates?: Array<Pick<Dialog,"o
   return [...byOrder.values()].sort((a,b)=>a.order-b.order);
 }
 
-/** Build messages for a chunk. */
 function buildChunkMessages(args: {
   instruction: string;
   output_format: string;
@@ -294,6 +174,8 @@ ${JSON.stringify({
 Chunk info:
 {"index": ${chunkIndex}, "count": ${chunkCount}, "based_on_orders": ${JSON.stringify(chunkDialogs.map(d=>d.order))}}
 
+/* Also include "categories": an array of high-level topics for THIS CHUNK. */
+
 Dialogs:
 ${JSON.stringify(chunkDialogs)}
 `
@@ -302,7 +184,6 @@ ${JSON.stringify(chunkDialogs)}
   return [system, user];
 }
 
-/** Build messages for reduce (middle summaries -> final summary/soft_summary). */
 function buildReduceMessages(args: {
   instruction: string;
   output_format: string;
@@ -314,7 +195,7 @@ function buildReduceMessages(args: {
   const system: Message = {
     role: "system",
     content:
-      "You consolidate chunk-level middle summaries into a final Summary and SoftSummary. " +
+      "You consolidate chunk-level middle summaries into final outputs. " +
       "Return ONLY JSON that strictly conforms to the provided schema."
   };
 
@@ -328,6 +209,11 @@ ${instruction}
 
 Output format (for reference):
 ${output_format}
+
+Requirements:
+- Produce a concise, informative "title" (headline) for the WHOLE meeting.
+- Provide "categories" as an array of high-level topics for the WHOLE meeting (e.g., ["エネルギー", "財政"]).
+- Keep summaries faithful to the provided middle summaries.
 
 Meta:
 ${JSON.stringify({
@@ -348,15 +234,12 @@ ${JSON.stringify(middle_summaries)}
 
 // ---------------- Parallel helpers ----------------
 
-/** Bounded parallel map that preserves input order in the result array. */
 async function mapWithConcurrency<I, O>(
   items: I[],
   limit: number,
   worker: (item: I, index: number) => Promise<O>
 ): Promise<O[]> {
-  if (!Number.isFinite(limit) || limit <= 0) {
-    throw new Error(`mapWithConcurrency: invalid limit=${limit}`);
-  }
+  if (!Number.isFinite(limit) || limit <= 0) throw new Error(`mapWithConcurrency: invalid limit=${limit}`);
   const results = new Array<O>(items.length);
   let next = 0;
   const runners = Array(Math.min(limit, items.length))
@@ -378,7 +261,8 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
-/** Reduce a single group of MiddleSummary[] → partial ReduceLLMResult via LLM (RPS-limited). */
+// ---------------- Reduce phase ----------------
+
 async function reduceGroupToResult(params: {
   instruction: string;
   output_format: string;
@@ -388,16 +272,8 @@ async function reduceGroupToResult(params: {
   llmOptions?: GenerateOptions;
 }): Promise<ReduceLLMResult> {
   const { instruction, output_format, meta, group, llm, llmOptions } = params;
-  const messages = buildReduceMessages({
-    instruction,
-    output_format,
-    meta,
-    middle_summaries: group
-  });
-
-  // RPS gate before the LLM call
+  const messages = buildReduceMessages({ instruction, output_format, meta, middle_summaries: group });
   await llmLimiter.acquire();
-
   const { object } = await llm.generateObject<ReduceLLMResult>(
     messages,
     reduceSchema,
@@ -406,7 +282,6 @@ async function reduceGroupToResult(params: {
   return object;
 }
 
-/** Convert a partial ReduceLLMResult back to a MiddleSummary for the next layer. */
 function reduceResultToMiddleSummary(r: ReduceLLMResult): MiddleSummary {
   return {
     based_on_orders: Array.from(new Set(r.summary.based_on_orders ?? [])),
@@ -414,13 +289,6 @@ function reduceResultToMiddleSummary(r: ReduceLLMResult): MiddleSummary {
   };
 }
 
-/**
- * Parallel, tree-structured reduction.
- * - Split into groups of size `groupSize`
- * - Reduce groups in parallel up to `concurrency` (each call RPS-limited)
- * - Convert each partial result to a MiddleSummary
- * - Repeat until one final group remains and reduce it to the final result
- */
 async function reduceMiddleSummaries(params: {
   instruction: string;
   output_format: string;
@@ -428,52 +296,46 @@ async function reduceMiddleSummaries(params: {
   middleSummaries: MiddleSummary[];
   llm: LLMClient;
   llmOptions?: GenerateOptions;
-  groupSize?: number;    // default: 8
-  concurrency?: number;  // default: 4
+  groupSize?: number;
+  concurrency?: number;
 }): Promise<ReduceLLMResult> {
-  const {
-    instruction, output_format, meta, middleSummaries, llm, llmOptions
-  } = params;
+  const { instruction, output_format, meta, middleSummaries, llm, llmOptions } = params;
 
-  const groupSize =
-    Math.max(1, Number(params.groupSize ?? process.env.REDUCE_GROUP_SIZE ?? 8));
-  const concurrency =
-    Math.max(1, Number(params.concurrency ?? process.env.REDUCE_CONCURRENCY ?? 4));
+  const groupSize = Math.max(1, Number(params.groupSize ?? process.env.REDUCE_GROUP_SIZE ?? 8));
+  const concurrency = Math.max(1, Number(params.concurrency ?? process.env.REDUCE_CONCURRENCY ?? 4));
 
   if (middleSummaries.length === 0) {
     return {
+      title: "",
+      categories: [],
       summary: { based_on_orders: [], summary: "" },
-      soft_summary: { based_on_orders: [], summary: "" }
+      soft_summary: { based_on_orders: [], summary: "" },
+      description: "",
+      keywords: []
     };
   }
 
   if (middleSummaries.length <= groupSize) {
-    return reduceGroupToResult({
-      instruction, output_format, meta, group: middleSummaries, llm, llmOptions
-    });
+    return reduceGroupToResult({ instruction, output_format, meta, group: middleSummaries, llm, llmOptions });
   }
 
   let layer: MiddleSummary[] = middleSummaries.slice();
   while (layer.length > groupSize) {
     const groups = chunkArray(layer, groupSize);
     const partials = await mapWithConcurrency(groups, concurrency, async (group) => {
-      const result = await reduceGroupToResult({
-        instruction, output_format, meta, group, llm, llmOptions
-      });
+      const result = await reduceGroupToResult({ instruction, output_format, meta, group, llm, llmOptions });
       return reduceResultToMiddleSummary(result);
     });
     layer = partials;
   }
 
-  return reduceGroupToResult({
-    instruction, output_format, meta, group: layer, llm, llmOptions
-  });
+  return reduceGroupToResult({ instruction, output_format, meta, group: layer, llm, llmOptions });
 }
 
 // ---------------- Public types ----------------
 
 export interface ChunkLLMResult {
-  category: string;
+  categories: string[];
   dialogs?: Array<Pick<Dialog, "order" | "summary" | "soft_language">>;
   middle_summary: MiddleSummary;
   terms?: Term[];
@@ -483,16 +345,16 @@ export interface ChunkLLMResult {
 }
 
 export interface ReduceLLMResult {
+  title: string;
+  categories: string[];
   summary: Summary;
   soft_summary: SoftSummary;
-  title?: string;
   description?: string;
   keywords?: Keyword[];
 }
 
 // ---------------- Main (one meeting) ----------------
 
-/** Process ONE meeting with greedy packing (no cutting). */
 export async function processMeeting({
   raw,
   instruction,
@@ -504,7 +366,7 @@ export async function processMeeting({
   raw: RawMeetingRecord;
   instruction: string;
   output_format: string;
-  charThreshold?: number;   // total chars per chunk (sum of original_text)
+  charThreshold?: number;
   llm: LLMClient;
   llmOptions?: GenerateOptions;
 }): Promise<Article> {
@@ -512,19 +374,17 @@ export async function processMeeting({
   const meta = buildMeta(raw);
   const dialogs = buildDialogs(raw);
 
-  // Pack dialogs into index sets, then materialize to chunks
   const indexTable = buildOrderLen(dialogs);
   const packs: IndexPack[] = packIndexSetsByGreedy(indexTable, charThreshold);
   const chunks: Dialog[][] = materializeChunks(packs, dialogs);
 
-  // Chunk-level LLM calls in PARALLEL (bounded). Each call is also RPS-limited.
   const chunkConcurrency = Math.max(1, Number(process.env.LLM_CHUNK_CONCURRENCY ?? 4));
 
   type ChunkAggregate = {
     idx: number;
-    category: string;
-    dialogs: Dialog[];            // merged per-dialog updates
-    middle: MiddleSummary;        // required
+    categories: string[];
+    dialogs: Dialog[];
+    middle: MiddleSummary;
     participants?: Participant[];
     terms?: Term[];
     keywords?: Keyword[];
@@ -544,9 +404,9 @@ export async function processMeeting({
         chunkCount: chunks.length
       });
 
-      // RPS gate before the LLM call
       await llmLimiter.acquire();
 
+      console.log(`Processing chunk ${i + 1}/${chunks.length} (${chunk.length} dialogs)`);
       const { object: part } = await llm.generateObject<ChunkLLMResult>(
         messages,
         chunkSchema,
@@ -556,7 +416,7 @@ export async function processMeeting({
       const mergedDialogs = mergeDialogSummaries(chunk, part.dialogs);
       return {
         idx: i,
-        category: part.category,
+        categories: Array.isArray(part.categories) ? part.categories : [],
         dialogs: mergedDialogs,
         middle: part.middle_summary,
         participants: part.participants,
@@ -567,7 +427,7 @@ export async function processMeeting({
     }
   );
 
-  // Deterministic aggregation after all chunk calls have completed
+  // Deterministic aggregation
   const allDialogs: Dialog[] = [];
   const allMiddle: MiddleSummary[] = [];
   const participantsMap = new Map<string, string>();
@@ -592,21 +452,15 @@ export async function processMeeting({
       keywordScore.set(k.keyword, { score: (cur?.score ?? 0) + base, priority: k.priority });
     }
 
-    if (r.category) {
-      categoryCount.set(r.category, (categoryCount.get(r.category) ?? 0) + 1);
+    for (const c of (r.categories ?? [])) {
+      const cat = String(c || "").trim();
+      if (!cat) continue;
+      categoryCount.set(cat, (categoryCount.get(cat) ?? 0) + 1);
     }
   }
 
-  let votedCategory: string | undefined;
-  {
-    let max = -1;
-    for (const [cat, cnt] of categoryCount.entries()) {
-      if (cnt > max) { max = cnt; votedCategory = cat; }
-    }
-  }
-
-  // Final reduce using PARALLEL TREE reduction over middle summaries
-  const reduced = await reduceMiddleSummaries({
+  // Final reduce
+ const reduced = await reduceMiddleSummaries({
     instruction,
     output_format,
     meta,
@@ -617,33 +471,42 @@ export async function processMeeting({
     concurrency: Number(process.env.REDUCE_CONCURRENCY ?? 4),
   });
 
+  // Pick top-2 categories by frequency across chunks (stable tie-breaker by name)
+  const topCategories: string[] = Array.from(categoryCount.entries())
+    .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+    .slice(0, 2)
+    .map(([cat]) => cat);
+
   // Keywords: prefer reduced.keywords; otherwise rank by score
-  const rankedKeywords: Keyword[] = reduced.keywords ?? [...keywordScore.entries()]
-    .sort((a,b)=> b[1].score - a[1].score)
-    .map(([keyword, _v], i) => {
-      const priority: "high" | "medium" | "low" = i < 8 ? "high" : i < 20 ? "medium" : "low";
-      return { keyword, priority };
-    });
+  const rankedKeywords: Keyword[] = (reduced.keywords && reduced.keywords.length)
+    ? reduced.keywords
+    : [...keywordScore.entries()]
+        .sort((a,b)=> b[1].score - a[1].score)
+        .map(([keyword, _v], i) => {
+          const priority: "high" | "medium" | "low" = i < 8 ? "high" : i < 20 ? "medium" : "low";
+          return { keyword, priority };
+        });
+
+  const fallbackTitle = `${meta.nameOfMeeting}（${meta.date}）`;
 
   const article: Article = {
     ...meta,
-    title: reduced.title ?? meta.title,
-    description: reduced.description ?? meta.description,
-    month: meta.date.slice(0, 7), // YYYY-MM format
-    category: votedCategory ?? "",
+    title: reduced.title || fallbackTitle,
+    description: reduced.description ?? "",
     dialogs: allDialogs,
     middle_summary: allMiddle,
     summary: reduced.summary,
     soft_summary: reduced.soft_summary,
     participants: [...participantsMap.entries()].map(([name, summary]) => ({ name, summary })),
     keywords: rankedKeywords,
-    terms: [...termsMap.entries()].map(([term, definition]) => ({ term, definition }))
+    terms: [...termsMap.entries()].map(([term, definition]) => ({ term, definition })),
+    categories: topCategories   // <= only the 1st and 2nd most frequent
   };
 
   return article;
 }
 
-// ---------------- Batch over RawMeetingData (parallel) ----------------
+// ---------------- Batch over RawMeetingData ----------------
 
 interface ArgsA {
   rawData: RawMeetingData;
@@ -653,8 +516,6 @@ interface ArgsA {
   llm: LLMClient;
   llmOptions?: GenerateOptions;
 }
-
-// Backward-compat: some callers used { raw, numOfCharChunk }
 interface ArgsB {
   raw: RawMeetingData;
   instruction: string;
@@ -675,13 +536,11 @@ export async function processRawMeetingData(args: ArgsA | (ArgsB & { concurrency
 
   const { instruction, output_format, llm, llmOptions } = args;
 
-  // Concurrency for per-meeting processing (default 4, override via LLM_CONCURRENCY or args.concurrency)
   const defaultConc = Number(process.env.LLM_CONCURRENCY ?? 4);
   const concurrency = Math.max(1, Number((args as any).concurrency ?? defaultConc));
 
   const meetings = rawData.meetingRecord;
 
-  // Process meetings in parallel with bounded concurrency; order is preserved
   const articles = await mapWithConcurrency(meetings, concurrency, (rec) =>
     processMeeting({
       raw: rec,
@@ -695,6 +554,3 @@ export async function processRawMeetingData(args: ArgsA | (ArgsB & { concurrency
 
   return articles;
 }
-
-// (Optional) export schemas if other modules (e.g., tests) need them
-export { chunkSchema, reduceSchema, buildReduceMessages };

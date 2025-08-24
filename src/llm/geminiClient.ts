@@ -98,8 +98,7 @@ export class GeminiClient implements LLMClient {
     // Prefer candidates text join to be safe across SDK updates
     const text =
       res?.response?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).join("") ??
-      res?.response?.text?.() ??
-      "";
+      res?.response?.text?.() ?? "";
 
     try {
       const parsed = JSON.parse(text) as T;

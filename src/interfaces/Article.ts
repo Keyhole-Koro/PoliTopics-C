@@ -7,7 +7,7 @@ export interface Article {
   session: number;
   nameOfHouse: string;
   nameOfMeeting: string;
-  category: string;
+  categories: string[];
   description: string;
 
   summary: Summary;

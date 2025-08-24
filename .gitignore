@@ -12,7 +12,7 @@ data
 
 layers
 
-src/*.json
+src/**/*.json
 
 .terraform
 .terraform.lock.hcl
