@@ -73,7 +73,7 @@ variable "llm_chunk_concurrency" {
 }
 variable "llm_rps" {
   type       = number
-  default    = 0.15
+  default    = 2
   description = "Requests per second for LLM processing"
 }
 variable "llm_reduce_concurrency" {

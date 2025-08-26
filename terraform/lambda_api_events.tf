@@ -21,62 +21,38 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_logs" {
 }
 
 #############################################
-# DynamoDB permissions (all three tables)
-# NOTE: The three tables (article/keywords/participants) must exist elsewhere.
+# DynamoDB permissions (single-table: politopics)
 #############################################
 resource "aws_iam_policy" "ddb_policy" {
   name = "${local.name}-ddb-policy"
   policy = jsonencode({
     Version = "2012-10-17",
-    Statement = [{
-      Effect = "Allow",
-      Action = [
-        "dynamodb:PutItem", "dynamodb:BatchWriteItem",
-        "dynamodb:GetItem", "dynamodb:BatchGetItem",
-        "dynamodb:Query", "dynamodb:DescribeTable"
-      ],
-      Resource = [
-        aws_dynamodb_table.article.arn,
-        aws_dynamodb_table.keywords.arn,
-        aws_dynamodb_table.participants.arn
-      ]
-    }]
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:BatchWriteItem",
+          "dynamodb:GetItem",
+          "dynamodb:BatchGetItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:DescribeTable",
+          "dynamodb:Scan"
+        ],
+        Resource = [
+          aws_dynamodb_table.politopics.arn,
+          "${aws_dynamodb_table.politopics.arn}/index/*"
+        ]
+      }
+    ]
   })
 }
 
 resource "aws_iam_role_policy_attachment" "ddb_attach" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = aws_iam_policy.ddb_policy.arn
-}
-
-#############################################
-# Extra DynamoDB permissions for link tables
-#############################################
-resource "aws_iam_policy" "ddb_links_policy" {
-  name = "${local.name}-ddb-links-policy"
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [{
-      Effect = "Allow",
-      Action = [
-        "dynamodb:PutItem",
-        "dynamodb:BatchWriteItem",
-        "dynamodb:Query",
-        "dynamodb:GetItem",
-        "dynamodb:BatchGetItem",
-        "dynamodb:DescribeTable"
-      ],
-      Resource = [
-        aws_dynamodb_table.keywords.arn,
-        aws_dynamodb_table.participants.arn
-      ]
-    }]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "ddb_links_attach" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = aws_iam_policy.ddb_links_policy.arn
 }
 
 #############################################
@@ -114,7 +90,7 @@ resource "aws_lambda_function" "handler" {
 
   # Performance
   timeout       = 300
-  memory_size   = 1024
+  memory_size   = 256
   architectures = ["x86_64"]
 
   # Environment variables
@@ -124,10 +100,8 @@ resource "aws_lambda_function" "handler" {
       NODE_OPTIONS                        = "--enable-source-maps"
       AWS_NODEJS_CONNECTION_REUSE_ENABLED = "1"
 
-      # Table names (wired to existing DDB resources)
-      ARTICLE_TABLE_NAME     = aws_dynamodb_table.article.name
-      KEYWORD_TABLE_NAME     = aws_dynamodb_table.keywords.name
-      PARTICIPANT_TABLE_NAME = aws_dynamodb_table.participants.name
+      # Single DynamoDB table (new)
+      POLITOPICS_TABLE_NAME = aws_dynamodb_table.politopics.name
 
       # Error logging sink
       ERROR_BUCKET = aws_s3_bucket.logs.bucket
@@ -138,16 +112,16 @@ resource "aws_lambda_function" "handler" {
       RUN_API_KEY                = var.run_api_key
 
       # LLM configuration
-      GEMINI_MODEL_NAME          = var.gemini_model_name
-      CHAR_THRESHHOLD           = var.char_threshhold
-      GEMINI_BURST_LIMIT         = var.llm_burst
-      LLM_CHUNK_CONCURRENCY      = var.llm_chunk_concurrency
-      LLM_RPS                    = var.llm_rps
-      LLM_REDUCE_CONCURRENCY     = var.llm_reduce_concurrency
+      GEMINI_MODEL_NAME       = var.gemini_model_name
+      CHAR_THRESHHOLD         = var.char_threshhold
+      GEMINI_BURST_LIMIT      = var.llm_burst
+      LLM_CHUNK_CONCURRENCY   = var.llm_chunk_concurrency
+      LLM_RPS                 = var.llm_rps
+      LLM_REDUCE_CONCURRENCY  = var.llm_reduce_concurrency
 
       # Optional date filters
-      FROM_DATE                  = var.from_date
-      UNTIL_DATE                 = var.until_date
+      FROM_DATE  = var.from_date
+      UNTIL_DATE = var.until_date
     }
   }
 
