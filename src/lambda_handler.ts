@@ -33,11 +33,6 @@ const llm = new GeminiClient({
   model: process.env.GEMINI_MODEL_NAME || "gemini-2.5-flash",
 });
 
-// DynamoDB setup
-const article_table_name = "politopics-article";
-const keyword_table_name = "politopics-keywords";
-const participant_table_name = "politopics-participants";
-
 const ddb = new DynamoDBClient({ region, ...(endpoint ? { endpoint } : {}) });
 const doc = DynamoDBDocumentClient.from(ddb);
 
@@ -237,9 +232,7 @@ async function executePipeline(
       const stored = await storeData(
         {
           doc: doc,
-          article_table_name: article_table_name,
-          keyword_table_name: keyword_table_name,
-          participant_table_name: participant_table_name,
+          table_name: "politopics"
         },
         article);
       const articleId =

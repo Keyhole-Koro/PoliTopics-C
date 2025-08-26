@@ -128,7 +128,7 @@ async function batchPutAll(
 }
 
 // ---- Store: main item + thin index items --------------------------------
-export async function storeData(
+export default async function storeData(
   config: Cfg,
   article: Article
 ): Promise<{ ok: boolean; id: string }> {
