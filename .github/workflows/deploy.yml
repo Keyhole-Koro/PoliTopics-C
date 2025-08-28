@@ -92,6 +92,28 @@ jobs:
             terraform import aws_lambda_permission.allow_apigw "${FUNCTION_NAME}/${SID}" || true
           fi
 
+      # ---- Preflight: adopt existing DynamoDB table ----
+      - name: Adopt existing DynamoDB table (import if exists)
+        working-directory: ./terraform
+        shell: bash
+        env:
+          DDB_TABLE_NAME: politopics
+        run: |
+          set -euo pipefail
+
+          echo "Checking region: ${TF_VAR_region:-not-set}"
+          if aws dynamodb describe-table --table-name "${DDB_TABLE_NAME}" --region "${TF_VAR_region}" >/dev/null 2>&1; then
+            echo "Found existing DynamoDB table '${DDB_TABLE_NAME}' in ${TF_VAR_region}."
+            if ! terraform state show -no-color aws_dynamodb_table.politopics >/dev/null 2>&1; then
+              echo "Importing DynamoDB table '${DDB_TABLE_NAME}' into state..."
+              terraform import aws_dynamodb_table.politopics "${DDB_TABLE_NAME}"
+            else
+              echo "DynamoDB table already managed in state. Skipping import."
+            fi
+          else
+            echo "No existing table '${DDB_TABLE_NAME}' found in ${TF_VAR_region}. Skipping import."
+          fi
+
       # ---- Terraform Format & Validate ----
       - name: Terraform FMT & Validate
         working-directory: ./terraform
