@@ -5,7 +5,6 @@ import 'dotenv/config';
 import * as prompt from '@LLMSummarize/prompt';
 import { processRawMeetingData } from '@LLMSummarize/pipeline';
 import { GeminiClient } from "@llm/geminiClient";
-import type { RawMeetingData } from '@interfaces/Raw';
 import type { Article } from '@interfaces/Article';
 
 const samplePath = path.resolve(__dirname, './sample.json');
@@ -14,7 +13,7 @@ if (!fs.existsSync(samplePath)) {
   throw new Error('❌ sample.json not found. Please create it with appropriate test data.');
 }
 
-import sample from './sample.json';
+const sample = JSON.parse(fs.readFileSync(samplePath, 'utf-8'));
 
 process.env.LLM_RPS = '0.15';
 process.env.LLM_BURST = '1';
