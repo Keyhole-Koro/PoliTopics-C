@@ -1,13 +1,5 @@
-output "article_table_name" {
-  value = aws_dynamodb_table.article.name
-}
-
-output "keyword_table_name" {
-  value = aws_dynamodb_table.keywords.name
-}
-
-output "participant_table_name" {
-  value = aws_dynamodb_table.participants.name
+output "politopics_table_name" {
+  value = aws_dynamodb_table.politopics.name
 }
 
 output "log_bucket" {
