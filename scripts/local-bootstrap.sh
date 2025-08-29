@@ -81,4 +81,3 @@ aws --endpoint-url "$ENDPOINT" s3api put-bucket-versioning \
   --versioning-configuration Status=Enabled
 
 echo "Done."
-echo "Tip: export AWS_ENDPOINT_URL=$ENDPOINT AWS_REGION=$AWS_REGION"

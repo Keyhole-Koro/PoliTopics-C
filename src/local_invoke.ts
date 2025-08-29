@@ -13,9 +13,20 @@ import type { ScheduledEvent } from 'aws-lambda';
   process.env.ERROR_BUCKET = process.env.ERROR_BUCKET || 'politopics-error-logs';
 
   // Date range (JST). FROM=since, UNTIL=until
-  process.env.FROM_DATE = process.env.FROM_DATE || '2025-06-01';
-  process.env.UNTIL_DATE = process.env.UNTIL_DATE || '2025-06-30';
+  process.env.FROM_DATE = process.env.FROM_DATE || '2025-05-28';
+  process.env.UNTIL_DATE = process.env.UNTIL_DATE || '2025-05-28';
   process.env.APP_ENV = process.env.APP_ENV || 'local';
+
+  process.env.LLM_RPS = process.env.LLM_RPS || '0.15';
+  process.env.LLM_BURST = process.env.LLM_BURST || '1';
+  process.env.LLM_REDUCE_CONCURRENCY = process.env.LLM_REDUCE_CONCURRENCY || '1';
+  process.env.LLM_CHUNK_CONCURRENCY = process.env.LLM_CHUNK_CONCURRENCY || '1';
+
+  process.env.REDUCE_GROUP_SIZE = process.env.REDUCE_GROUP_SIZE || '3';
+  process.env.REDUCE_CONCURRENCY = process.env.REDUCE_CONCURRENCY || '1';
+  process.env.CHAR_THRESHOLD = process.env.CHAR_THRESHOLD || '15000';
+
+
 
   // Please set your real API and key in .env for full run:
   // process.env.NATIONAL_DIET_API_ENDPOINT = "...";

@@ -16,7 +16,6 @@ export interface GenerateOptions {
   temperature?: number;
   topP?: number;
   topK?: number;
-  maxTokens?: number;      // Gemini: corresponds to maxOutputTokens
   timeoutMs?: number;      // Implement with AbortController
 }
 

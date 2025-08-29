@@ -1,6 +1,8 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { LLMClient, Message, GenerateOptions, GenerateResult, LLMUsage } from "./LLMClient";
 
+import { saveErrorToS3 } from "@utils/errorSink";
+
 function sanitizeSchemaForGemini<T extends Record<string, any>>(schema: T): T {
   const clone = JSON.parse(JSON.stringify(schema));
   (function strip(node: any) {
@@ -45,7 +47,6 @@ export class GeminiClient implements LLMClient {
     if (o.temperature != null) cfg.temperature = o.temperature;
     if (o.topP != null) cfg.topP = o.topP;
     if (o.topK != null) cfg.topK = o.topK;
-    if (o.maxTokens != null) cfg.maxOutputTokens = o.maxTokens;
     return cfg;
   }
 

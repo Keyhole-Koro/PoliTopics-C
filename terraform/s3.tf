@@ -15,13 +15,13 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs" {
   bucket = aws_s3_bucket.logs.id
 
   rule {
-    id     = "expire-after-90-days"
+    id     = "expire-after-14-days"
     status = "Enabled"
 
     filter {} # apply to the whole bucket
 
     expiration {
-      days = 90
+      days = 14
     }
   }
 }

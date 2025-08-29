@@ -63,21 +63,32 @@ variable "char_threshhold" {
 
 variable "llm_burst" {
   type       = number
-  default    = 4
+  default    = 1
   description = "Burst concurrency for LLM processing"
 }
 variable "llm_chunk_concurrency" {
   type       = number
-  default    = 4
+  default    = 1
   description = "Concurrency for LLM chunk processing"
 }
 variable "llm_rps" {
   type       = number
-  default    = 2
+  default    = 0.15
   description = "Requests per second for LLM processing"
 }
 variable "llm_reduce_concurrency" {
   type       = number
-  default    = 4
+  default    = 1
   description = "Concurrency for LLM reduce processing"
+}
+
+variable "reduce_group_size" {
+  type       = number
+  default    = 3
+  description = "Group size for reduce processing"
+}
+variable "reduce_concurrency" {
+  type       = number
+  default    = 1
+  description = "Concurrency for reduce processing"
 }

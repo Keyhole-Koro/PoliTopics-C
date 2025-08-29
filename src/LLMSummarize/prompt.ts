@@ -34,7 +34,12 @@ export const instruction = `【目的】
  - \`speaker_position\`: 役職
  - \`speaker_role\`: 役割 (質問者、答弁者など)
  - \`summary\`: 発言の主旨を簡潔に要約
- - \`soft_language\`: 一般読者にも伝わるように、やさしく丁寧に言い換えた文章
+ - \`soft_language\`: 一般読者にも伝わるように、やさしく丁寧に言い換えた文章。**ただし次を厳守**：
+    - 文章の**構成を原文に極力寄せる**（文や段落の順序・箇条書きの並びを保持）。情報の**削除・追加・再配列はしない**。
+    - **原文が口語なら口語**で記述し、敬体/常体・語尾・間投詞などのトーンを原文に揃える（例：「〜です/ます」か「〜だ・〜ね」）。
+    - これは**要約ではない**。原文の意味内容を保った**平易化・言い換え**のみを行う。
+    - 固有名詞・数値・否定・条件・但し書きは**落とさない/弱めない**。
+    - 誤解防止のための接続語の補足や難語の置換は可。ただし**意味は変更しない**。
  - \`response_to\`: この発言がどの発言に反応しているか (例:質問、賛同、反論など)
 
 6. **参加者情報 (Participants)**
@@ -93,7 +98,7 @@ export const output_format = `### 出力フォーマット
       "speaker_position": "役職",
       "speaker_role": "役割",
       "summary": "発言内容の要約",
-      "soft_language": "発言をやさしく丁寧に言い換えた内容",
+      "soft_language": "※要約ではない。原文の構成・口調をできるだけ保持した平易な言い換え（情報の削除・追加・再配列をしない）",
       "response_to": [
         {
           "order": 0,
@@ -123,6 +128,6 @@ export const output_format = `### 出力フォーマット
 }
 `;
 
-export const compose_prompt = (content: string): string => {
-  return `${instruction}\n${output_format}\n###　入力\n${content}`;
+export const compose_prompt = (input: string): string => {
+  return `${instruction}\n${output_format}\n###　入力\n${input}`;
 };

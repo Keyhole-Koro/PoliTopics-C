@@ -1,28 +1,31 @@
-# PoliTopics-C
+# PoliTopics‑C
 
-A serverless application that fetches National Diet records, summarizes them with LLM (Gemini), and stores the results in DynamoDB, with logs stored in S3.  
-The project uses **Terraform** for infrastructure management, **TypeScript** for Lambda functions, and supports both **local development** (LocalStack) and AWS deployment.
+A serverless application that fetches National Diet records, summarizes them with an LLM (Gemini), and stores results in DynamoDB. Run logs are written to S3. The project uses **TypeScript** for Lambda code, **Terraform** for infrastructure, and supports both **local development** via LocalStack and **deployment to AWS**.
 
 ---
 
-## Features
+## Highlights
 
-- **Lambda Function** (`politopics-c`):
-  - Fetches raw data from National Diet API
-  - Summarizes speeches using Gemini API
-  - Stores structured articles in DynamoDB (`politopics-article`)
-  - Indexes article IDs in `politopics-keywords` and `politopics-participants`
-  - Logs success/error events to S3 bucket (`politopics-error-logs-*`)
-  - **Date range defaults to the *previous day in JST* if `FROM_DATE`/`UNTIL_DATE` are not provided**
+- **Lambda function** `politopics-c`
+  - Fetches raw data from the National Diet API
+  - Summarizes speeches with Gemini
+  - Stores structured **articles** in DynamoDB (single-table design)
+  - Writes success/error logs to S3
+  - **Date range** defaults to the **previous day (JST)** when `FROM_DATE` / `UNTIL_DATE` are not provided
 
-- **DynamoDB Tables**:
-  1. `politopics-article` — Stores full article records
-  2. `politopics-keywords` — Maps keywords → article IDs
-  3. `politopics-participants` — Maps participants → article IDs
+- **DynamoDB (single table)**
+  - Physical table: `politopics`
+  - Keys: `PK` (partition), `SK` (sort)
+  - GSIs:
+    - `ArticleByDate` — global latest (GSI1: `GSI1PK = "ARTICLE"`, `GSI1SK = ISO date`)
+    - `MonthDateIndex` — per-month latest (GSI2: `GSI2PK = "YEAR#YYYY#MONTH#MM"`, `GSI2SK = ISO date`)
+  - Thin index items for categories, persons, keywords, image kinds, sessions, houses, and meetings
 
-- **S3 Logs**:
-  - `success/` and `error/` logs per Lambda execution
-  - Useful for debugging and audit
+- **Local-first DX**
+  - LocalStack recipe (Docker Compose)
+  - DynamoDB bootstrap script
+  - Jest integration tests against LocalStack (@ddb)
+  - VS Code **Dev Container** support (`.devcontainer/`)
 
 ---
 
@@ -30,182 +33,82 @@ The project uses **Terraform** for infrastructure management, **TypeScript** for
 
 - Node.js 18+
 - npm
+- Docker (for LocalStack)
 - AWS CLI
 - Terraform v1.5+
-- LocalStack (optional, for local dev)
-- `zip` command (for packaging Lambda)
-- A Gemini API Key
+- `zip` (for packaging, if you build a .zip)
+- Gemini API key
 
 ---
 
-## Environment Variables
 
-Create a `.env` file in the project root:
+## Local Development (LocalStack)
 
-```env
-AWS_REGION=ap-northeast-3
-AWS_ACCESS_KEY_ID=test
-AWS_SECRET_ACCESS_KEY=test
-
-NATIONAL_DIET_API_ENDPOINT=https://api.example.com
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Logging (optional): if set, Lambda writes run logs to this bucket
-ERROR_BUCKET=politopics-error-logs-123456789012-ap-northeast-3
-
-# Optional: override Lambda task concurrency (default: 4)
-CONCURRENCY=4
-
-# Optional: LocalStack endpoint
-# AWS_ENDPOINT_URL=http://localhost:4566
-
-# Optional: date filters (YYYY-MM-DD)
-# If omitted, both default to the PREVIOUS DAY in JST.
-# FROM_DATE=2025-08-11
-# UNTIL_DATE=2025-08-11
-```
-
-### Date Range Behavior
-
-- Time zone is **Asia/Tokyo (JST)**.
-- If `FROM_DATE` and `UNTIL_DATE` are **not** set, both default to **yesterday (JST)**.
-- To process a specific day, set `FROM_DATE` and `UNTIL_DATE` to the same `YYYY-MM-DD`.
-- To process a multi-day range, set both accordingly (inclusive).
-
----
-
-## Local Development
-
-### 1. Start LocalStack
 
 ```bash
-localstack start -d
-```
+npm run local:up
 
-### 2. Bootstrap Local Resources
+./scripts/local-bootstrap.sh
 
-This will create DynamoDB tables and the S3 bucket locally:
+npm run dev
 
-```bash
-bash ./scripts/local-bootstrap.sh
-```
-
-### 3. Run Lambda Locally
-
-```bash
-# Defaults to previous day in JST if no dates are set
-npx ts-node -r tsconfig-paths/register scripts/local-invoke.ts
-
-# Example: run for a specific day
-FROM_DATE=2025-08-11 UNTIL_DATE=2025-08-11 \
-npx ts-node -r tsconfig-paths/register scripts/local-invoke.ts
 ```
 
 ---
 
-## Deploy to AWS
+## DynamoDB Data Model
 
-### 1. Build Lambda Package
+Single physical table: **`politopics`**
 
-```bash
-bash ./scripts/build-zip.sh
-```
+### Key attributes
 
-### 2. Initialize and Apply Terraform
+| Attribute | Type   | Purpose                                                                                     |
+| --------- | ------ | ------------------------------------------------------------------------------------------- |
+| `PK`      | String | Partition key (namespaces like `A#<id>`, `CATEGORY#<name>`, `PERSON#<name>`, etc.)          |
+| `SK`      | String | Sort key (often `M#<YYYY-MM>#D#<ISO date>#A#<id>` for index items; `META` for main article) |
+| `GSI1PK`  | String | GSI1 global listing: always `"ARTICLE"` on main article item                                |
+| `GSI1SK`  | String | GSI1 sort by ISO date (descending reads)                                                    |
+| `GSI2PK`  | String | GSI2 per-month listing: `"MONTH#<YYYY-MM>"` on main article item                            |
+| `GSI2SK`  | String | GSI2 sort by ISO date                                                                       |
 
-```bash
-cd terraform
-terraform init
-terraform apply -auto-approve -var="region=ap-northeast-3"
-```
+### Item types & key shapes
 
-Terraform will create:
+| `type`                | `PK` example              | `SK` example                | Main attributes (subset)                                                                                                                          |
+| --------------------- | ------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ARTICLE` (main body) | `A#<id>`                  | `META`                      | `id,title,date,month,imageKind,session,nameOfHouse,nameOfMeeting,categories,description,summary,soft_summary,middle_summary,dialogs` + GSI fields |
+| `CATEGORY_INDEX`      | `CATEGORY#<category>`     | `M#<month>#D#<date>#A#<id>` | `articleId,title,date,month,imageKind,nameOfMeeting`                                                                                              |
+| `PERSON_INDEX`        | `PERSON#<nameOrYomi>`     | same as above               | same as above                                                                                                                                     |
+| `KEYWORD_INDEX`       | `KEYWORD#<keyword>`       | same as above               | same as above                                                                                                                                     |
+| `IMAGEKIND_INDEX`     | `IMAGEKIND#<imageKind>`   | same as above               | same as above                                                                                                                                     |
+| `SESSION_INDEX`       | `SESSION#<zero-padded>`   | same as above               | same as above                                                                                                                                     |
+| `HOUSE_INDEX`         | `HOUSE#<nameOfHouse>`     | same as above               | same as above                                                                                                                                     |
+| `MEETING_INDEX`       | `MEETING#<nameOfMeeting>` | same as above               | same as above                                                                                                                                     |
 
-* DynamoDB tables:
+### Representative queries
 
-  * `politopics-article`
-  * `politopics-keywords`
-  * `politopics-participants`
-* Lambda function `politopics-c`
-* S3 log bucket
-* API Gateway HTTP API (if enabled)
+| Use case                   | KeyCondition                                       |
+| -------------------------- | -------------------------------------------------- |
+| Latest N for a category    | `PK='CATEGORY#外交'` with `ScanIndexForward=false`   |
+| Category for a month       | `PK='CATEGORY#外交' AND begins_with(SK,'M#2025-08')` |
+| Latest for imageKind = 会議録 | `PK='IMAGEKIND#会議録'`                               |
+| Latest for session=201     | `PK='SESSION#0201'`                                |
+| All latest articles        | **GSI1**: `GSI1PK='ARTICLE'` (descending)          |
+| Latest for a month         | **GSI2**: `GSI2PK='MONTH#2025-08'` (descending)    |
 
-### 3. Check Outputs
-
-```bash
-terraform output
-```
-
-Example:
-
-```
-api_url = "https://xxxx.execute-api.ap-northeast-3.amazonaws.com"
-function_name = "politopics-c"
-log_bucket = "politopics-error-logs-123456789012-ap-northeast-3"
-```
-
----
-
-## DynamoDB Schema
-
-### `politopics-article`
-
-| Field        | Type   | Notes                          |
-| ------------ | ------ | ------------------------------ |
-| id           | String | PK                             |
-| date         | String | GSI (DateIndex)                |
-| title        | String |                                |
-| summary      | String |                                |
-| participants | List   | name + summary per participant |
-| keywords     | List   | keyword + priority             |
-
-### `politopics-keywords`
-
-| Field   | Type   | Notes     |
-| ------- | ------ | --------- |
-| keyword | String | PK        |
-| dataId  | String | Range key |
-
-### `politopics-participants`
-
-| Field       | Type   | Notes     |
-| ----------- | ------ | --------- |
-| participant | String | PK        |
-| dataId      | String | Range key |
+> Dates are stored as **ISO 8601 UTC** strings so lexicographical order == chronological order.
 
 ---
 
 ## Logs
 
-Lambda logs execution results to S3 (when `ERROR_BUCKET` is set):
+If `ERROR_BUCKET` is set, the Lambda stores run metadata in S3:
 
-* `success/` → Successful runs (metadata + stored IDs)
-* `error/` → Failed runs (error stack trace)
+- `success/` — Successful runs (metadata + stored IDs)
+- `error/` — Failed runs (serialized error)
 
-Example S3 key:
+Example S3 keys:
 
 ```
-success/2025-08-11T13:48:32.270Z-uuid.json
-error/2025-08-11T14:05:12.100Z-uuid.json
-```
-
----
-
-## Useful Commands
-
-### Tail Lambda Logs
-
-```bash
-aws logs tail /aws/lambda/politopics-c --follow --region ap-northeast-3
-```
-
-### Invoke Lambda Manually
-
-```bash
-aws lambda invoke \
-  --function-name politopics-c \
-  --payload '{}' \
-  out.json \
-  --region ap-northeast-3
-cat out.json
+success/2025-08-11T13:48:32.270Z-<uuid>.json
+error/2025-08-11T14:05:12.100Z-<uuid>.json
 ```

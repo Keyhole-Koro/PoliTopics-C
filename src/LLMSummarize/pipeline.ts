@@ -147,19 +147,19 @@ function buildChunkMessages(args: {
   const system: Message = {
     role: "system",
     content:
-      "You are an expert assistant that summarizes Japanese parliamentary minutes for general readers. " +
-      "Return ONLY JSON that strictly conforms to the provided schema."
+      "あなたは、一般読者向けに日本の国会議事録を要約するエキスパートアシスタントです。" +
+      "与えられたスキーマに厳密に準拠したJSONのみを返してください。"
   };
 
   const user: Message = {
     role: "user",
     content:
-`Return ONLY JSON for the following task.
+`以下のタスクに対して、JSONのみを返してください。
 
-Spec:
+仕様:
 ${instruction}
 
-Output format (for reference):
+出力フォーマット:
 ${output_format}
 
 Meta:
@@ -174,8 +174,6 @@ ${JSON.stringify({
 Chunk info:
 {"index": ${chunkIndex}, "count": ${chunkCount}, "based_on_orders": ${JSON.stringify(chunkDialogs.map(d=>d.order))}}
 
-/* Also include "categories": an array of high-level topics for THIS CHUNK. */
-
 Dialogs:
 ${JSON.stringify(chunkDialogs)}
 `
@@ -183,6 +181,7 @@ ${JSON.stringify(chunkDialogs)}
 
   return [system, user];
 }
+
 
 function buildReduceMessages(args: {
   instruction: string;

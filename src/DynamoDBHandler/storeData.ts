@@ -1,25 +1,31 @@
-// dynamo.ts
 // DynamoDB single-table pattern for Articles + thin indexes
 //
-// - Main item:
+// Overview
+// --------
+// - Main item (one per article):
 //     PK = "A#<id>", SK = "META"
-//     Holds all large fields (dialogs, summaries, etc.). Only one item per article.
+//     Holds heavy attributes (dialogs, summaries, etc.).
+//
 // - Thin index items (for fast listing by facets):
 //     PK in { CATEGORY#<category>, PERSON#<name>, KEYWORD#<kw>,
 //             IMAGEKIND#<kind>, SESSION#<zero-padded>, HOUSE#<house>, MEETING#<meeting> }
-//     SK = "Y#<YYYY>#M#<MM>#D#<ISO date>#A#<id>"
-//     Example: "Y#2025#M#08#D#2025-08-20T12:34:56Z#A#a1"
-//     This allows begins_with() filters by year and year+month.
+//     SK = "Y#<YYYY>#M#<MM>#D#<ISO-UTC>#A#<id>"
+//     Example: "Y#2025#M#08#D#20T12:34:56.000Z#A#a1"
+//     Using a fixed-length ISO UTC string guarantees lexicographic order == chronological order.
+//
 // - Optional "recent keyword" log (for trending views):
 //     PK = "KEYWORD_RECENT"
-//     SK = "D#<ISO date>#KW#<keyword>#A#<id>"
-// - GSIs:
-//     ArticleByDate  (GSI1PK="ARTICLE",     GSI1SK=<ISO date>)   -- all articles by date
-//     MonthDateIndex (GSI2PK="MONTH#YYYY-MM", GSI2SK=<ISO date>) -- per-month articles by date
+//     SK = "D#<ISO-UTC>#KW#<keyword>#A#<id>"
 //
-// Tips:
-// - Initialize DynamoDBDocumentClient with marshallOptions: { removeUndefinedValues: true }.
-// - Store date as ISO UTC strings so lexicographic order == chronological order.
+// - GSIs (global listings):
+//     ArticleByDate   (GSI1PK = "ARTICLE",       GSI1SK = <ISO-UTC date>)
+//     MonthDateIndex  (GSI2PK = "YEAR#YYYY#MONTH#MM", GSI2SK = <ISO-UTC date>)
+//
+// Notes
+// -----
+// - Always store dates as ISO UTC (toISOString()) to keep ordering correct.
+// - Keep thin index items minimal (list-view fields only) to reduce cost.
+// - Initialize DynamoDBDocumentClient with marshallOptions: { removeUndefinedValues: true } upstream.
 
 import {
   DynamoDBDocumentClient,
@@ -29,7 +35,7 @@ import {
   GetCommand,
 } from "@aws-sdk/lib-dynamodb";
 
-// ---- Minimal self-contained types (replace with your actual interfaces if available) ----
+// ---- Minimal self-contained types (replace with your project types if available) ----
 export type Summary = unknown;
 export type SoftSummary = unknown;
 export type MiddleSummary = unknown;
@@ -41,8 +47,8 @@ export type Term = { term?: string };
 export interface Article {
   id: string;
   title: string;
-  date: string;  // ISO string, e.g. "2025-08-20T12:34:56Z"
-  month: string; // "YYYY-MM"
+  date: string;  // ISO string or "YYYY-MM-DD" (will be normalized to ISO UTC)
+  month: string; // "YYYY-MM" (will be normalized to align with `date`)
   imageKind: "会議録" | "目次" | "索引" | "附録" | "追録";
   session: number;
   nameOfHouse: string;
@@ -64,7 +70,9 @@ export type Cfg = {
   table_name: string; // single table name
 };
 
-// ---- Key helpers --------------------------------------------------------
+// ==========================
+// Key helpers
+// ==========================
 const artPK = (id: string) => `A#${id}`;
 const artSK = "META";
 
@@ -77,19 +85,46 @@ const sessionKey = (s: number | string) => `SESSION#${String(s).padStart(4, "0")
 const houseKey = (h: string) => `HOUSE#${h}`;
 const meetingKey = (m: string) => `MEETING#${m}`;
 
-// ---- Validators / formatters --------------------------------------------
+// ==========================
+// Validators / formatters
+// ==========================
 function ensureYYYYMM(v: string) {
-  if (!/^\d{4}-\d{2}$/.test(v)) throw new Error(`month must be 'YYYY-MM', got: ${v}`);
+  if (!/^\d{4}-\d{2}$/.test(v)) {
+    throw new Error(`month must be 'YYYY-MM', got: ${v}`);
+  }
   return v;
 }
 function yOf(monthYYYYMM: string) { return ensureYYYYMM(monthYYYYMM).slice(0, 4); }
 function mOf(monthYYYYMM: string) { return ensureYYYYMM(monthYYYYMM).slice(5, 7); }
 
-// Compose the thin-index SK as "Y#YYYY#M#MM#D#<ISO>#A#<id>"
+// Normalize input date-like string to strict ISO UTC (fixed length).
+// - If input is already ISO-like, it will be parsed and re-serialized via toISOString().
+// - If input is "YYYY-MM-DD", we treat it as 00:00:00Z of that day.
+export function toIsoUtc(dateLike: string): string {
+  if (/^\d{4}-\d{2}-\d{2}T/.test(dateLike)) {
+    return new Date(dateLike).toISOString();
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateLike)) {
+    return new Date(dateLike + "T00:00:00Z").toISOString();
+  }
+  return new Date(dateLike).toISOString();
+}
+
+// If you want "month" aligned to *JST* day boundaries instead of UTC, use this:
+// (Default below keeps UTC alignment; switch if your product logic is JST-centric.)
+export function monthFromIsoUsingJST(isoUtc: string): string {
+  const d = new Date(isoUtc);
+  const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000); // UTC+9h
+  const y = jst.getUTCFullYear();
+  const m = String(jst.getUTCMonth() + 1).padStart(2, "0");
+  return `${y}-${m}`;
+}
+
+// Compose thin-index SK as "Y#YYYY#M#MM#D#<ISO-UTC>#A#<id>"
 const idxSK = (monthYYYYMM: string, isoDate: string, id: string) =>
   `Y#${yOf(monthYYYYMM)}#M#${mOf(monthYYYYMM)}#D#${isoDate}#A#${id}`;
 
-// Optional: convert "8" or "08" to "YYYY-08" (defaulting to the current UTC year)
+// Convert "8" or "08" to "YYYY-08" using a base date (UTC year by default)
 export function toYYYYMM(monthLike: string, baseDate = new Date()): string {
   const m = monthLike.padStart(2, "0").slice(-2);
   const y = String(baseDate.getUTCFullYear());
@@ -102,7 +137,9 @@ export function lastNDaysRange(n: number, now = new Date()) {
   return { start, end };
 }
 
-// ---- BatchWrite helper (max 25 items per request, with simple retry) ----
+// ==========================
+// BatchWrite helper (max 25 per request) with simple retry
+// ==========================
 async function batchPutAll(
   doc: DynamoDBDocumentClient,
   table: string,
@@ -117,7 +154,7 @@ async function batchPutAll(
 
     const unp = res.UnprocessedItems?.[table] ?? [];
     if (unp.length > 0) {
-      // naive backoff + requeue unprocessed items in the current window
+      // naive backoff + requeue unprocessed items into the current window
       await new Promise((r) => setTimeout(r, 200));
       const retryItems = unp.map((u) => u.PutRequest!.Item);
       items.splice(i, 0, ...retryItems);
@@ -127,46 +164,60 @@ async function batchPutAll(
   }
 }
 
-// ---- Store: main item + thin index items --------------------------------
+// ==========================
+// Store: main item + thin index items
+// ==========================
 export default async function storeData(
   config: Cfg,
   article: Article
 ): Promise<{ ok: boolean; id: string }> {
   const { doc, table_name: TableName } = config;
 
-  // Main item (keep heavy attributes ONLY here)
+  // ---- Normalize date & month to keep ordering and prefix filters consistent
+  const iso = toIsoUtc(article.date);
+
+  // Choose which alignment you want for "month":
+  //   1) UTC-based (default here)
+  const monthNorm = ensureYYYYMM(article.month ?? iso.slice(0, 7));
+  //   2) JST-based (uncomment the next line and comment out the UTC line above if needed)
+  // const monthNorm = monthFromIsoUsingJST(iso);
+
+  const gsi2pk = `Y#${yOf(monthNorm)}#M#${mOf(monthNorm)}`;
+
+  // ---- Main item (heavy fields kept here)
   const mainItem = {
-    ...article, // spread first to allow overrides below
+    ...article,            // keep original fields (will be overridden below)
+    date: iso,             // enforce ISO UTC
+    month: monthNorm,      // align month with normalized date
     PK: artPK(article.id),
     SK: artSK,
     type: "ARTICLE",
 
     // GSIs for global listings
     GSI1PK: "ARTICLE",
-    GSI1SK: article.date,
-    GSI2PK: `MONTH#${article.month}`,
-    GSI2SK: article.date,
+    GSI1SK: iso,
+    GSI2PK: gsi2pk,
+    GSI2SK: iso,
   };
 
   await doc.send(new PutCommand({ TableName, Item: mainItem }));
 
-  // Thin index items (only minimal fields used for list views)
+  // ---- Thin index items (minimal fields for list views only)
   const thinBase = {
     type: "THIN_INDEX",
     articleId: article.id,
     title: article.title,
-    date: article.date,
-    month: article.month,
+    date: iso,             // ISO UTC
+    month: monthNorm,      // aligned to date
     imageKind: article.imageKind,
     nameOfMeeting: article.nameOfMeeting,
     session: article.session,
     nameOfHouse: article.nameOfHouse,
-    // Avoid duplicating arrays/large fields here to keep costs low.
     // Add description if your list UI needs it (trade-off: storage + write cost).
     // description: article.description,
   };
 
-  const sk = idxSK(article.month, article.date, article.id);
+  const sk = idxSK(monthNorm, iso, article.id);
   const idxItems: any[] = [];
 
   // Category indexes
@@ -207,13 +258,13 @@ export default async function storeData(
     // Optional: recent keyword occurrence (for "trending keywords" views)
     idxItems.push({
       PK: "KEYWORD_RECENT",
-      SK: `D#${article.date}#KW#${kw}#A#${article.id}`,
+      SK: `D#${iso}#KW#${kw}#A#${article.id}`,
       kind: "KEYWORD_OCCURRENCE",
       keyword: kw,
       articleId: article.id,
       title: article.title,
-      date: article.date,
-      month: article.month,
+      date: iso,
+      month: monthNorm,
     });
   }
 
@@ -257,7 +308,9 @@ export default async function storeData(
   return { ok: true, id: article.id };
 }
 
-// ---- Get main article ---------------------------------------------------
+// ==========================
+// Get main article
+// ==========================
 export async function getArticleById(cfg: Cfg, id: string) {
   return cfg.doc.send(
     new GetCommand({
@@ -267,7 +320,9 @@ export async function getArticleById(cfg: Cfg, id: string) {
   );
 }
 
-// ---- Query helpers (per-facet) -----------------------------------------
+// ==========================
+// Query helpers (per facet)
+// ==========================
 type QueryOpts = { limit?: number; startKey?: any };
 
 const qByPk = (cfg: Cfg, pk: string, opts?: QueryOpts) =>
@@ -281,256 +336,3 @@ const qByPk = (cfg: Cfg, pk: string, opts?: QueryOpts) =>
       ExclusiveStartKey: opts?.startKey,
     })
   );
-
-export const listByCategory = (cfg: Cfg, category: string, opts?: QueryOpts) =>
-  qByPk(cfg, catKey(category), opts);
-
-export const listByPerson = (cfg: Cfg, person: string, opts?: QueryOpts) =>
-  qByPk(cfg, personKey(person), opts);
-
-export const listByKeyword = (cfg: Cfg, kw: string, opts?: QueryOpts) =>
-  qByPk(cfg, kwKey(kw), opts);
-
-export const listByImageKind = (cfg: Cfg, kind: string, opts?: QueryOpts) =>
-  qByPk(cfg, kindKey(kind), opts);
-
-export const listBySession = (cfg: Cfg, s: number | string, opts?: QueryOpts) =>
-  qByPk(cfg, sessionKey(s), opts);
-
-export const listByHouse = (cfg: Cfg, h: string, opts?: QueryOpts) =>
-  qByPk(cfg, houseKey(h), opts);
-
-export const listByMeeting = (cfg: Cfg, m: string, opts?: QueryOpts) =>
-  qByPk(cfg, meetingKey(m), opts);
-
-// ---- Year / Year+Month prefix filters on SK -----------------------------
-// Year-only filter (e.g., "Y#2025#...")
-export const listByPkAndYear = (
-  cfg: Cfg,
-  pk: string,
-  year: number | string,
-  opts?: { limit?: number }
-) =>
-  cfg.doc.send(
-    new QueryCommand({
-      TableName: cfg.table_name,
-      KeyConditionExpression: "PK = :pk AND begins_with(SK, :pref)",
-      ExpressionAttributeValues: {
-        ":pk": pk,
-        ":pref": `Y#${String(year).padStart(4, "0")}#`,
-      },
-      ScanIndexForward: false,
-      Limit: opts?.limit ?? 50,
-    })
-  );
-
-// Year+Month filter using 'YYYY-MM' input
-export const listByPkAndMonth = (
-  cfg: Cfg,
-  pk: string,
-  monthYYYYMM: string,
-  opts?: { limit?: number }
-) => {
-  const y = yOf(monthYYYYMM);
-  const m = mOf(monthYYYYMM);
-  return cfg.doc.send(
-    new QueryCommand({
-      TableName: cfg.table_name,
-      KeyConditionExpression: "PK = :pk AND begins_with(SK, :pref)",
-      ExpressionAttributeValues: {
-        ":pk": pk,
-        ":pref": `Y#${y}#M#${m}`,
-      },
-      ScanIndexForward: false,
-      Limit: opts?.limit ?? 50,
-    })
-  );
-};
-
-export const listByCategoryAndYear = (
-  cfg: Cfg,
-  category: string,
-  year: number | string,
-  opts?: { limit?: number }
-) => listByPkAndYear(cfg, catKey(category), year, opts);
-
-export const listByPersonAndYear = (
-  cfg: Cfg,
-  person: string,
-  year: number | string,
-  opts?: { limit?: number }
-) => listByPkAndYear(cfg, personKey(person), year, opts);
-
-export const listByKeywordAndYear = (
-  cfg: Cfg,
-  kw: string,
-  year: number | string,
-  opts?: { limit?: number }
-) => listByPkAndYear(cfg, kwKey(kw), year, opts);
-
-export const listByCategoryAndMonth = (
-  cfg: Cfg,
-  category: string,
-  monthYYYYMM: string,
-  opts?: { limit?: number }
-) => listByPkAndMonth(cfg, catKey(category), monthYYYYMM, opts);
-
-export const listByPersonAndMonth = (
-  cfg: Cfg,
-  person: string,
-  monthYYYYMM: string,
-  opts?: { limit?: number }
-) => listByPkAndMonth(cfg, personKey(person), monthYYYYMM, opts);
-
-export const listByKeywordAndMonth = (
-  cfg: Cfg,
-  kw: string,
-  monthYYYYMM: string,
-  opts?: { limit?: number }
-) => listByPkAndMonth(cfg, kwKey(kw), monthYYYYMM, opts);
-
-// ---- Global listings via GSIs ------------------------------------------
-export const listRecentArticles = (cfg: Cfg, opts?: QueryOpts) =>
-  cfg.doc.send(
-    new QueryCommand({
-      TableName: cfg.table_name,
-      IndexName: "ArticleByDate",
-      KeyConditionExpression: "GSI1PK = :p",
-      ExpressionAttributeValues: { ":p": "ARTICLE" },
-      ScanIndexForward: false,
-      Limit: opts?.limit ?? 20,
-      ExclusiveStartKey: opts?.startKey,
-    })
-  );
-
-export const listMonth = (cfg: Cfg, monthYYYYMM: string, opts?: QueryOpts) =>
-  cfg.doc.send(
-    new QueryCommand({
-      TableName: cfg.table_name,
-      IndexName: "MonthDateIndex",
-      KeyConditionExpression: "GSI2PK = :p",
-      ExpressionAttributeValues: { ":p": `MONTH#${ensureYYYYMM(monthYYYYMM)}` },
-      ScanIndexForward: false,
-      Limit: opts?.limit ?? 50,
-      ExclusiveStartKey: opts?.startKey,
-    })
-  );
-
-// Year-range on all articles via GSI1 (e.g., 2025-01-01..2026-01-01)
-export const listYearAll = (cfg: Cfg, year: number | string, opts?: QueryOpts) => {
-  const y = String(year).padStart(4, "0");
-  const start = `${y}-01-01T00:00:00Z`;
-  const end   = `${String(Number(y) + 1).padStart(4, "0")}-01-01T00:00:00Z`;
-  return cfg.doc.send(
-    new QueryCommand({
-      TableName: cfg.table_name,
-      IndexName: "ArticleByDate",
-      KeyConditionExpression: "GSI1PK = :p AND GSI1SK BETWEEN :s AND :e",
-      ExpressionAttributeValues: { ":p": "ARTICLE", ":s": start, ":e": end },
-      ScanIndexForward: false,
-      Limit: opts?.limit ?? 50,
-      ExclusiveStartKey: opts?.startKey,
-    })
-  );
-};
-
-// ---- Keyword "recent" occurrence log ------------------------------------
-export const listRecentKeywordOccurrences = (cfg: Cfg, opts?: QueryOpts) =>
-  cfg.doc.send(
-    new QueryCommand({
-      TableName: cfg.table_name,
-      KeyConditionExpression: "PK = :pk",
-      ExpressionAttributeValues: { ":pk": "KEYWORD_RECENT" },
-      ScanIndexForward: false,
-      Limit: opts?.limit ?? 100,
-      ExclusiveStartKey: opts?.startKey,
-    })
-  );
-
-export const listRecentKeywordOccurrencesInRange = (
-  cfg: Cfg,
-  startISO: string,
-  endISO: string,
-  opts?: QueryOpts
-) =>
-  cfg.doc.send(
-    new QueryCommand({
-      TableName: cfg.table_name,
-      KeyConditionExpression: "PK = :p AND SK BETWEEN :s AND :e",
-      ExpressionAttributeValues: {
-        ":p": "KEYWORD_RECENT",
-        ":s": `D#${startISO}`,
-        ":e": `D#${endISO}`,
-      },
-      ScanIndexForward: false,
-      Limit: opts?.limit ?? 100,
-      ExclusiveStartKey: opts?.startKey,
-    })
-  );
-
-// Deduplicate to get N distinct recent keywords (no time range)
-export async function listRecentDistinctKeywords(cfg: Cfg, limit = 20) {
-  const seen = new Set<string>();
-  const out: Array<{ keyword: string; lastSeen: string }> = [];
-  let startKey: any | undefined = undefined;
-
-  while (out.length < limit) {
-    const page = await listRecentKeywordOccurrences(cfg, { limit: 100, startKey });
-    for (const it of page.Items ?? []) {
-      const kw = String(it.keyword);
-      if (!seen.has(kw)) {
-        seen.add(kw);
-        out.push({ keyword: kw, lastSeen: String(it.date) });
-        if (out.length >= limit) break;
-      }
-    }
-    if (!page.LastEvaluatedKey) break;
-    startKey = page.LastEvaluatedKey;
-  }
-  return out;
-}
-
-// Deduplicate recent keywords within last N days
-export async function listRecentDistinctKeywordsLastNDays(cfg: Cfg, n = 30, limit = 20) {
-  const { start, end } = lastNDaysRange(n);
-  const seen = new Set<string>();
-  const out: Array<{ keyword: string; lastSeen: string }> = [];
-  let startKey: any | undefined = undefined;
-
-  while (out.length < limit) {
-    const page = await listRecentKeywordOccurrencesInRange(cfg, start, end, { limit: 100, startKey });
-    for (const it of page.Items ?? []) {
-      const kw = String(it.keyword);
-      if (!seen.has(kw)) {
-        seen.add(kw);
-        out.push({ keyword: kw, lastSeen: String(it.date) });
-        if (out.length >= limit) break;
-      }
-    }
-    if (!page.LastEvaluatedKey) break;
-    startKey = page.LastEvaluatedKey;
-  }
-  return out;
-}
-
-// ---- Unified search (simple exact-match routing across facets) ----------
-export async function unifiedSearch(cfg: Cfg, q: string, limit = 20) {
-  const s = q.trim();
-  const [cat, person, kw, meeting, house] = await Promise.all([
-    listByCategory(cfg, s, { limit }),
-    listByPerson(cfg, s, { limit }),
-    listByKeyword(cfg, s, { limit }),
-    listByMeeting(cfg, s, { limit }),
-    listByHouse(cfg, s, { limit }),
-  ]);
-
-  if ((cat.Items?.length ?? 0) > 0) return { mode: "category", ...cat };
-  if ((person.Items?.length ?? 0) > 0) return { mode: "person", ...person };
-  if ((kw.Items?.length ?? 0) > 0) return { mode: "keyword", ...kw };
-  if ((meeting.Items?.length ?? 0) > 0) return { mode: "meeting", ...meeting };
-  if ((house.Items?.length ?? 0) > 0) return { mode: "house", ...house };
-
-  // Fallback: latest articles globally
-  const recent = await listRecentArticles(cfg, { limit });
-  return { mode: "recent-fallback", ...recent };
-}
