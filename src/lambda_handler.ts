@@ -30,14 +30,15 @@ const s3 = new S3Client({ region, ...(endpoint ? { endpoint } : {}) });
 
 const llm = new GeminiClient({
   apiKey: process.env.GEMINI_API_KEY!,
-  model: process.env.GEMINI_MODEL_NAME || "gemini-2.5-flash",
+  model: process.env.GEMINI_MODEL_NAME || "gemini-2.5-pro",
+  timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS ?? 180_000)
 });
 
 const ddb = new DynamoDBClient({ region, ...(endpoint ? { endpoint } : {}) });
 const doc = DynamoDBDocumentClient.from(ddb);
 
 // National Diet API endpoint
-const national_diet_api_endpoint = "https://kokkai.ndl.go.jp/api/meeting"; 
+const national_diet_api_endpoint = process.env.NATIONAL_DIET_API_ENDPOINT || "https://kokkai.ndl.go.jp/api/meeting";
 
 // ---- helpers ---------------------------------------------------
 

@@ -18,19 +18,19 @@ function truncate(s: string, max = 1024 * 1024) {
 
 export async function saveErrorToS3(params: {
   error: unknown;
-  payload: string;                     // LLMの生レスポンス
-  meta?: Record<string, unknown>;      // 任意の付加情報
-  keyHint?: string;                    // ファイル名ヒント
+  payload: string;
+  meta?: Record<string, unknown>;
+  keyHint?: string;
 }) {
   const bucket = process.env.ERROR_BUCKET;
-  const prefix = process.env.ERROR_PREFIX || "error"; // デフォルト /error
+  const prefix = process.env.ERROR_PREFIX || "error"; // /error
   if (!bucket) {
     console.warn("[errorSink] ERROR_BUCKET 未設定のため保存スキップ");
     return;
   }
 
   const iso = new Date().toISOString();
-  const ts = iso.replace(/[:]/g, "-");               // Windows-safe
+  const ts = iso.replace(/[:]/g, "-");
   const rnd = Math.random().toString(36).slice(2, 8);
   const key = `${prefix}/${ts}-${params.keyHint ?? "llm-parse"}-${rnd}.json`;
 

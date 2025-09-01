@@ -23,31 +23,23 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_logs" {
 #############################################
 # DynamoDB permissions (single-table: politopics)
 #############################################
-resource "aws_iam_policy" "ddb_policy" {
-  name = "${local.name}-ddb-policy"
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect = "Allow",
-        Action = [
-          "dynamodb:PutItem",
-          "dynamodb:BatchWriteItem",
-          "dynamodb:GetItem",
-          "dynamodb:BatchGetItem",
-          "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:Query",
-          "dynamodb:DescribeTable",
-          "dynamodb:Scan"
-        ],
-        Resource = [
-          aws_dynamodb_table.politopics.arn,
-          "${aws_dynamodb_table.politopics.arn}/index/*"
-        ]
-      }
+data "aws_iam_policy_document" "ddb_doc" {
+  statement {
+    effect = "Allow"
+    actions = [
+      "dynamodb:PutItem",
+      "dynamodb:BatchWriteItem",
     ]
-  })
+    resources = [
+      aws_dynamodb_table.politopics.arn,
+      "${aws_dynamodb_table.politopics.arn}/index/*",
+    ]
+  }
+}
+
+resource "aws_iam_policy" "ddb_policy" {
+  name   = "${local.name}-ddb-policy"
+  policy = data.aws_iam_policy_document.ddb_doc.json
 }
 
 resource "aws_iam_role_policy_attachment" "ddb_attach" {
@@ -56,18 +48,26 @@ resource "aws_iam_role_policy_attachment" "ddb_attach" {
 }
 
 #############################################
-# S3 policy for error logs (bucket must exist)
+# S3 policy for error/success logs (bucket must exist)
 #############################################
+data "aws_iam_policy_document" "s3_doc" {
+  statement {
+    sid    = "AllowWriteToErrorAndSuccessPrefixes"
+    effect = "Allow"
+    actions = [
+      "s3:PutObject",
+      "s3:PutObjectTagging",
+    ]
+    resources = [
+      "${aws_s3_bucket.logs.arn}/error/*",
+      "${aws_s3_bucket.logs.arn}/success/*",
+    ]
+  }
+}
+
 resource "aws_iam_policy" "s3_policy" {
-  name = "${local.name}-s3-policy"
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [{
-      Effect   = "Allow",
-      Action   = ["s3:PutObject"],
-      Resource = "${aws_s3_bucket.logs.arn}/*"
-    }]
-  })
+  name   = "${local.name}-s3-policy"
+  policy = data.aws_iam_policy_document.s3_doc.json
 }
 
 resource "aws_iam_role_policy_attachment" "s3_attach" {
@@ -81,7 +81,7 @@ resource "aws_iam_role_policy_attachment" "s3_attach" {
 resource "aws_lambda_function" "handler" {
   function_name = "politopics-c"
   role          = aws_iam_role.lambda_role.arn
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs22.x"
   handler       = "lambda_handler.handler"
 
   # Package
@@ -91,7 +91,7 @@ resource "aws_lambda_function" "handler" {
   # Performance
   timeout       = 300
   memory_size   = 256
-  architectures = ["x86_64"]
+  architectures = ["arm64"]
 
   # Environment variables
   environment {
@@ -113,7 +113,7 @@ resource "aws_lambda_function" "handler" {
 
       # LLM configuration
       GEMINI_MODEL_NAME       = var.gemini_model_name
-      CHAR_THRESHHOLD         = var.char_threshhold
+      CHAR_THRESHOLD          = var.char_threshhold
       GEMINI_BURST_LIMIT      = var.llm_burst
       LLM_CHUNK_CONCURRENCY   = var.llm_chunk_concurrency
       LLM_RPS                 = var.llm_rps
@@ -198,7 +198,7 @@ resource "aws_lambda_permission" "allow_apigw" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.handler.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
+  source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/${aws_apigatewayv2_stage.default.name}/POST/run"
 
   # Depend on stage so the execution ARN shape is settled (route may be imported).
   depends_on = [aws_apigatewayv2_stage.default]

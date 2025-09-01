@@ -65,10 +65,10 @@ Single physical table: **`politopics`**
 | Attribute | Type   | Purpose                                                                                     |
 | --------- | ------ | ------------------------------------------------------------------------------------------- |
 | `PK`      | String | Partition key (namespaces like `A#<id>`, `CATEGORY#<name>`, `PERSON#<name>`, etc.)          |
-| `SK`      | String | Sort key (often `M#<YYYY-MM>#D#<ISO date>#A#<id>` for index items; `META` for main article) |
+| `SK`      | String | Sort key (often `Y#YYYY#M#MM#D#<ISO date>#A#<id>` for index items; `META` for main article) |
 | `GSI1PK`  | String | GSI1 global listing: always `"ARTICLE"` on main article item                                |
 | `GSI1SK`  | String | GSI1 sort by ISO date (descending reads)                                                    |
-| `GSI2PK`  | String | GSI2 per-month listing: `"MONTH#<YYYY-MM>"` on main article item                            |
+| `GSI2PK`  | String | GSI2 per-month listing: `"YEAR#YYYY#MONTH#MM"` on main article item                            |
 | `GSI2SK`  | String | GSI2 sort by ISO date                                                                       |
 
 ### Item types & key shapes

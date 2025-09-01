@@ -6,6 +6,8 @@ import type { ScheduledEvent } from 'aws-lambda';
   // Minimal ScheduledEvent-like object
   const event: ScheduledEvent = { source: 'aws.events' } as any;
 
+  process.env.NATIONAL_DIET_API_ENDPOINT = "https://kokkai.ndl.go.jp/api/meeting?limit=1";
+
   // Local defaults (can be overridden by .env)
   process.env.AWS_REGION = process.env.AWS_REGION || 'ap-northeast-3';
   process.env.AWS_ENDPOINT_URL = process.env.AWS_ENDPOINT_URL || 'http://localhost:4566';
@@ -16,7 +18,8 @@ import type { ScheduledEvent } from 'aws-lambda';
   process.env.FROM_DATE = process.env.FROM_DATE || '2025-05-28';
   process.env.UNTIL_DATE = process.env.UNTIL_DATE || '2025-05-28';
   process.env.APP_ENV = process.env.APP_ENV || 'local';
-
+  process.env.LLM_CACHE_ENABLED = process.env.LLM_CACHE_ENABLED || 'true';
+  
   process.env.LLM_RPS = process.env.LLM_RPS || '0.15';
   process.env.LLM_BURST = process.env.LLM_BURST || '1';
   process.env.LLM_REDUCE_CONCURRENCY = process.env.LLM_REDUCE_CONCURRENCY || '1';
