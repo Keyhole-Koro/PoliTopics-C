@@ -15,6 +15,8 @@ import 'dotenv/config';
 
 import fetchNationalDietRecords from '@NationalDietAPIHandler/NationalDietAPIHandler';
 import { GeminiClient } from "@llm/geminiClient";
+import { GroqClient } from "@llm/groqClient";
+import { withBudget } from "@llm/middleware";
 import * as prompt from '@LLMSummarize/prompt';
 import { processRawMeetingData } from '@LLMSummarize/pipeline';
 import storeData from '@DynamoDBHandler/storeData';
@@ -28,11 +30,29 @@ const region = process.env.AWS_REGION || "ap-northeast-3";
 const endpoint = process.env.AWS_ENDPOINT_URL;
 const s3 = new S3Client({ region, ...(endpoint ? { endpoint } : {}) });
 
-const llm = new GeminiClient({
-  apiKey: process.env.GEMINI_API_KEY!,
-  model: process.env.GEMINI_MODEL_NAME || "gemini-2.5-pro",
-  timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS ?? 180_000)
-});
+const llmProvider = (process.env.LLM_PROVIDER || "gemini").toLowerCase();
+const baseLlm = llmProvider === "groq"
+  ? new GroqClient({
+      apiKey: process.env.GROQ_API_KEY!,
+      model: process.env.GROQ_MODEL_NAME || "llama-3.1-70b-versatile",
+      timeoutMs: Number(process.env.GROQ_TIMEOUT_MS ?? process.env.LLM_TIMEOUT_MS ?? 180_000)
+    })
+  : new GeminiClient({
+      apiKey: process.env.GEMINI_API_KEY!,
+      model: process.env.GEMINI_MODEL_NAME || "gemini-2.5-pro",
+      timeoutMs: Number(process.env.GEMINI_TIMEOUT_MS ?? process.env.LLM_TIMEOUT_MS ?? 180_000)
+    });
+
+// Optional cross-cutting budgets (prefer these over client-specific)
+const budgetLlm = (() => {
+  const rpm = Number(process.env.LLM_BUDGET_RPM ?? 0);
+  const rpd = Number(process.env.LLM_BUDGET_RPD ?? 0);
+  const tpm = Number(process.env.LLM_BUDGET_TPM ?? 0);
+  const strict = (process.env.LLM_BUDGET_TPM_STRICT || "").toLowerCase() === "true";
+  if ((rpm > 0) || (rpd > 0) || (tpm > 0)) return withBudget(baseLlm, { rpm, rpd, tpm, strictTpm: strict });
+  return baseLlm;
+})();
+const llm = budgetLlm;
 
 const ddb = new DynamoDBClient({ region, ...(endpoint ? { endpoint } : {}) });
 const doc = DynamoDBDocumentClient.from(ddb);

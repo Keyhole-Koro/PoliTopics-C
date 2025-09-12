@@ -1,6 +1,6 @@
 # PoliTopics‑C
 
-A serverless application that fetches National Diet records, summarizes them with an LLM (Gemini), and stores results in DynamoDB. Run logs are written to S3. The project uses **TypeScript** for Lambda code, **Terraform** for infrastructure, and supports both **local development** via LocalStack and **deployment to AWS**.
+A serverless application that fetches National Diet records, summarizes them with an LLM (Gemini or Groq), and stores results in DynamoDB. Run logs are written to S3. The project uses **TypeScript** for Lambda code, **Terraform** for infrastructure, and supports both **local development** via LocalStack and **deployment to AWS**.
 
 ---
 
@@ -8,7 +8,7 @@ A serverless application that fetches National Diet records, summarizes them wit
 
 - **Lambda function** `politopics-c`
   - Fetches raw data from the National Diet API
-  - Summarizes speeches with Gemini
+  - Summarizes speeches with an LLM (Gemini or Groq)
   - Stores structured **articles** in DynamoDB (single-table design)
   - Writes success/error logs to S3
   - **Date range** defaults to the **previous day (JST)** when `FROM_DATE` / `UNTIL_DATE` are not provided
@@ -37,7 +37,7 @@ A serverless application that fetches National Diet records, summarizes them wit
 - AWS CLI
 - Terraform v1.5+
 - `zip` (for packaging, if you build a .zip)
-- Gemini API key
+- Gemini or Groq API key
 
 ---
 
@@ -53,6 +53,18 @@ npm run local:up
 npm run dev
 
 ```
+
+### Choosing the LLM provider
+
+- Set `LLM_PROVIDER=gemini` (default) or `LLM_PROVIDER=groq`.
+- For Gemini, set `GEMINI_API_KEY` and optionally `GEMINI_MODEL_NAME`.
+- For Groq, set `GROQ_API_KEY` and optionally `GROQ_MODEL_NAME` (defaults to `llama-3.1-70b-versatile`).
+
+You can also control client-side throttling and retries via env:
+
+- Generic: `LLM_RPS`, `LLM_BURST`, `LLM_TIMEOUT_MS`, `LLM_RETRY_*`
+- Gemini-specific: `GEMINI_*`
+- Groq-specific: `GROQ_*`
 
 ---
 

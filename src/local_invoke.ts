@@ -18,6 +18,7 @@ import type { ScheduledEvent } from 'aws-lambda';
   process.env.FROM_DATE = process.env.FROM_DATE || '2025-05-28';
   process.env.UNTIL_DATE = process.env.UNTIL_DATE || '2025-05-28';
   process.env.APP_ENV = process.env.APP_ENV || 'local';
+  process.env.LLM_PROVIDER = process.env.LLM_PROVIDER || 'gemini';
   process.env.LLM_CACHE_ENABLED = process.env.LLM_CACHE_ENABLED || 'true';
   
   process.env.LLM_RPS = process.env.LLM_RPS || '0.15';
@@ -27,7 +28,9 @@ import type { ScheduledEvent } from 'aws-lambda';
 
   process.env.REDUCE_GROUP_SIZE = process.env.REDUCE_GROUP_SIZE || '3';
   process.env.REDUCE_CONCURRENCY = process.env.REDUCE_CONCURRENCY || '1';
-  process.env.CHAR_THRESHOLD = process.env.CHAR_THRESHOLD || '15000';
+  process.env.CHAR_THRESHOLD = process.env.CHAR_THRESHOLD || '10000';
+
+  process.env.LLM_PROVIDER = process.env.LLM_PROVIDER || 'groq';
 
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bootstrap PoliTopics resources on LocalStack using AWS CLI (no awslocal).
-# Fixed names:
-#   - DynamoDB: politopics-article, politopics-keywords, politopics-participants
+# Fixed names (single-table design):
+#   - DynamoDB: politopics (PK, SK; GSIs: ArticleByDate, MonthDateIndex)
 #   - S3: politopics-error-logs  (logs for success/error)
 # Safe to re-run.
 
@@ -22,47 +22,43 @@ echo "Region:    $AWS_REGION"
 echo "Endpoint:  $ENDPOINT"
 echo
 
-# --- Articles table (id HASH, GSI on date) ---
-echo "Creating DynamoDB table 'politopics-article'..."
+TABLE_NAME="politopics"
+echo "Creating DynamoDB table '$TABLE_NAME' (single table)..."
 aws --endpoint-url "$ENDPOINT" dynamodb create-table \
-  --table-name politopics-article \
+  --table-name "$TABLE_NAME" \
   --attribute-definitions \
-    AttributeName=id,AttributeType=S \
-    AttributeName=date,AttributeType=S \
+    AttributeName=PK,AttributeType=S \
+    AttributeName=SK,AttributeType=S \
+    AttributeName=GSI1PK,AttributeType=S \
+    AttributeName=GSI1SK,AttributeType=S \
+    AttributeName=GSI2PK,AttributeType=S \
+    AttributeName=GSI2SK,AttributeType=S \
   --key-schema \
-    AttributeName=id,KeyType=HASH \
+    AttributeName=PK,KeyType=HASH \
+    AttributeName=SK,KeyType=RANGE \
   --billing-mode PAY_PER_REQUEST \
   --global-secondary-indexes \
-    'IndexName=DateIndex,KeySchema=[{AttributeName=date,KeyType=HASH}],Projection={ProjectionType=ALL}' \
+    '[
+      {
+        "IndexName": "ArticleByDate",
+        "KeySchema": [
+          {"AttributeName": "GSI1PK", "KeyType": "HASH"},
+          {"AttributeName": "GSI1SK", "KeyType": "RANGE"}
+        ],
+        "Projection": {"ProjectionType": "ALL"}
+      },
+      {
+        "IndexName": "MonthDateIndex",
+        "KeySchema": [
+          {"AttributeName": "GSI2PK", "KeyType": "HASH"},
+          {"AttributeName": "GSI2SK", "KeyType": "RANGE"}
+        ],
+        "Projection": {"ProjectionType": "ALL"}
+      }
+    ]' \
   >/dev/null 2>&1 || true
 
-aws --endpoint-url "$ENDPOINT" dynamodb wait table-exists --table-name politopics-article
-
-# --- Keywords link table (keyword HASH, dataId RANGE) ---
-echo "Creating DynamoDB table 'politopics-keywords'..."
-aws --endpoint-url "$ENDPOINT" dynamodb create-table \
-  --table-name politopics-keywords \
-  --attribute-definitions \
-    AttributeName=keyword,AttributeType=S \
-    AttributeName=dataId,AttributeType=S \
-  --key-schema \
-    AttributeName=keyword,KeyType=HASH \
-    AttributeName=dataId,KeyType=RANGE \
-  --billing-mode PAY_PER_REQUEST \
-  >/dev/null 2>&1 || true
-
-# --- Participants link table (participant HASH, dataId RANGE) ---
-echo "Creating DynamoDB table 'politopics-participants'..."
-aws --endpoint-url "$ENDPOINT" dynamodb create-table \
-  --table-name politopics-participants \
-  --attribute-definitions \
-    AttributeName=participant,AttributeType=S \
-    AttributeName=dataId,AttributeType=S \
-  --key-schema \
-    AttributeName=participant,KeyType=HASH \
-    AttributeName=dataId,KeyType=RANGE \
-  --billing-mode PAY_PER_REQUEST \
-  >/dev/null 2>&1 || true
+aws --endpoint-url "$ENDPOINT" dynamodb wait table-exists --table-name "$TABLE_NAME"
 
 # --- S3 for logs ---
 echo "Creating S3 bucket 'politopics-error-logs'..."

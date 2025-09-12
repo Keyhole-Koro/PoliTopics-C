@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { LLMClient, Message, GenerateOptions, GenerateResult, LLMUsage } from "./LLMClient";
+import { BudgetManager, parseBool } from "./limiters";
 import { saveErrorToS3 } from "@utils/errorSink";
 
 /** Deep-clone + future-proof place to strip unsupported JSON Schema bits if needed. */
@@ -109,6 +110,7 @@ export class GeminiClient implements LLMClient {
   private limiter?: RpsLimiter;
   private sem?: Semaphore;
   private defaultTimeoutMs = 60_000;
+  private budget?: BudgetManager;
 
   /**
    * @param apiKey Gemini API key
@@ -137,6 +139,15 @@ export class GeminiClient implements LLMClient {
     if (mc > 0) this.sem = new Semaphore(mc);
 
     if (opts.timeoutMs && Number.isFinite(opts.timeoutMs)) this.defaultTimeoutMs = opts.timeoutMs!;
+
+    // Per-minute/day/token budgets
+    const rpm = Number(process.env.GEMINI_RPM ?? process.env.LLM_RPM ?? 0);
+    const rpd = Number(process.env.GEMINI_RPD ?? process.env.LLM_RPD ?? 0);
+    const tpm = Number(process.env.GEMINI_TPM ?? process.env.LLM_TPM ?? 0);
+    const strict = parseBool(process.env.GEMINI_TPM_STRICT ?? process.env.LLM_TPM_STRICT);
+    if ((rpm > 0) || (rpd > 0) || (tpm > 0)) {
+      this.budget = new BudgetManager({ rpm, rpd, tpm, strictTpm: strict });
+    }
   }
 
   /** Build model with optional system instruction. */
@@ -202,6 +213,11 @@ export class GeminiClient implements LLMClient {
 
   /** Plain text generation. */
   async generate(messages: Message[], options?: GenerateOptions): Promise<GenerateResult> {
+    let expectedTokens: number | undefined;
+    if (this.budget?.enabled && this.budget.strictTpm) {
+      try { expectedTokens = await this.countTokens(messages); } catch { /* best-effort */ }
+    }
+    if (this.budget?.enabled) await this.budget.acquireRequest(expectedTokens);
     const systemInstruction = messages.filter(m => m.role === "system").map(m => m.content).join("\n\n") || undefined;
     const nonSystem = messages.filter(m => m.role !== "system");
     const model = this.buildModel(options?.model ?? this.defaultModel, systemInstruction);
@@ -211,17 +227,24 @@ export class GeminiClient implements LLMClient {
     }));
 
     // Retry each full attempt, and on each attempt throttle+timeout apply.
-    return this.withRetry(() =>
+    const result = await this.withRetry(() =>
       this.withThrottle(async () => {
         const res = await model.generateContent({ contents, generationConfig: this.toGenConfig(options) });
         const text = res.response?.text?.() ?? "";
-        return { text, usage: toUsage(res.response?.usageMetadata), raw: res };
+        const usage = toUsage(res.response?.usageMetadata);
+        if (this.budget?.enabled) {
+          const used = usage?.totalTokens ?? ((usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0));
+          await this.budget.noteUsage(used, expectedTokens);
+        }
+        return { text, usage, raw: res };
       }, options?.timeoutMs)
     );
+    return result;
   }
 
   /** Server-sent streaming (yields incremental text). */
   async *stream(messages: Message[], options?: GenerateOptions) {
+    if (this.budget?.enabled) await this.budget.acquireRequest();
     const systemInstruction = messages.filter(m => m.role === "system").map(m => m.content).join("\n\n") || undefined;
     const nonSystem = messages.filter(m => m.role !== "system");
     const model = this.buildModel(options?.model ?? this.defaultModel, systemInstruction);
@@ -255,6 +278,11 @@ export class GeminiClient implements LLMClient {
     schema: object,
     options?: GenerateOptions
   ): Promise<{ object: T; usage?: LLMUsage; raw?: unknown }> {
+    let expectedTokens: number | undefined;
+    if (this.budget?.enabled && this.budget.strictTpm) {
+      try { expectedTokens = await this.countTokens(messages); } catch { /* best-effort */ }
+    }
+    if (this.budget?.enabled) await this.budget.acquireRequest(expectedTokens);
     const systemInstruction = messages.filter(m => m.role === "system").map(m => m.content).join("\n\n") || undefined;
     const nonSystem = messages.filter(m => m.role !== "system");
     const model = this.buildModel(options?.model ?? this.defaultModel, systemInstruction);
@@ -284,14 +312,24 @@ export class GeminiClient implements LLMClient {
 
         try {
           const parsed = JSON.parse(text) as T;
-          return { object: parsed, usage: toUsage(res.response?.usageMetadata), raw: res };
+          const usage = toUsage(res.response?.usageMetadata);
+          if (this.budget?.enabled) {
+            const used = usage?.totalTokens ?? ((usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0));
+            await this.budget.noteUsage(used, expectedTokens);
+          }
+          return { object: parsed, usage, raw: res };
         } catch {
           // 1) Try to salvage the largest JSON block
           const m = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
           if (m) {
             try {
               const parsed = JSON.parse(m[0]) as T;
-              return { object: parsed, usage: toUsage(res.response?.usageMetadata), raw: res };
+              const usage = toUsage(res.response?.usageMetadata);
+              if (this.budget?.enabled) {
+                const used = usage?.totalTokens ?? ((usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0));
+                await this.budget.noteUsage(used, expectedTokens);
+              }
+              return { object: parsed, usage, raw: res };
             } catch { /* ignore and continue */ }
           }
 

@@ -107,12 +107,15 @@ resource "aws_lambda_function" "handler" {
       ERROR_BUCKET = aws_s3_bucket.logs.bucket
 
       # Secrets and config (passed via TF vars)
+      LLM_PROVIDER               = var.llm_provider
       GEMINI_API_KEY             = var.gemini_api_key
+      GROQ_API_KEY               = var.groq_api_key
       NATIONAL_DIET_API_ENDPOINT = var.national_diet_api_endpoint
       RUN_API_KEY                = var.run_api_key
 
       # LLM configuration
       GEMINI_MODEL_NAME       = var.gemini_model_name
+      GROQ_MODEL_NAME         = var.groq_model_name
       CHAR_THRESHOLD          = var.char_threshhold
       GEMINI_BURST_LIMIT      = var.llm_burst
       LLM_CHUNK_CONCURRENCY   = var.llm_chunk_concurrency

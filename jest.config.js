@@ -1,6 +1,7 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  modulePathIgnorePatterns: ['<rootDir>/dist'],
   moduleNameMapper: {
     '^@DynamoDBHandler/(.*)$': '<rootDir>/src/DynamoDBHandler/$1',
     '^@LLMSummarize/(.*)$': '<rootDir>/src/LLMSummarize/$1',

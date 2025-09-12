@@ -33,10 +33,30 @@ variable "gemini_api_key" {
   sensitive = true
 }
 
+# LLM provider selection (gemini | groq)
+variable "llm_provider" {
+  description = "LLM provider to use (gemini or groq)"
+  type        = string
+  default     = "groq"
+}
+
+# Groq config
+variable "groq_model_name" {
+  description = "Groq model name"
+  type        = string
+  default     = "llama-3.1-70b-versatile"
+}
+variable "groq_api_key" {
+  type        = string
+  sensitive   = true
+  default     = ""
+  description = "Groq API key (leave empty if not using Groq)"
+}
+
 variable "national_diet_api_endpoint" {
   type        = string
   description = "National Diet API endpoint"
-  default     = "https://kokkai.ndl.go.jp/api/meeting?limit=50"
+  default     = "https://kokkai.ndl.go.jp/api/meeting"
 }
 
 variable "from_date" {
